@@ -183,6 +183,26 @@ def generate_syntetic_qa_pair(
         raise gr.Error(f"Error to generate {e}")
 
 
+def dataset_source_name(article_data: list[dict], qa_data: list[dict] | None = None) -> str:
+    """Infer a stable download filename source from the fetched article data."""
+
+    qa_titles = {str(qa.get("article_title", "")) for qa in qa_data or []}
+    matching_articles = [
+        article
+        for article in article_data
+        if not qa_titles or str(article.get("title", "")) in qa_titles
+    ]
+    source_names = {
+        "smartq"
+        if "/api/v1/knowledge/" in str(article.get("source", ""))
+        else "wikipedia"
+        if "wikipedia.org" in str(article.get("source", ""))
+        else "dataset"
+        for article in matching_articles
+    }
+    return source_names.pop() if len(source_names) == 1 else "dataset"
+
+
 def add_to_qa_dataset(
     type: str,
     language: str,
@@ -488,12 +508,16 @@ def build_save_tab(articles_state: gr.State, qa_data_state: gr.State) -> None:
         def handle_article_download_click(article_data: list[dict]) -> str:
             if not article_data:
                 raise gr.Error("No article data to download.")
-            return create_json_file(article_data, prefix="wiki_articles_")
+            source_name = dataset_source_name(article_data)
+            return create_json_file(article_data, prefix=f"{source_name}_articles_")
 
-        def handle_qa_download_click(qa_data: list[dict]) -> str:
+        def handle_qa_download_click(
+            qa_data: list[dict], article_data: list[dict]
+        ) -> str:
             if not qa_data:
                 raise gr.Error("No Q/A data to download.")
-            return create_json_file(qa_data, prefix="wiki_qa_")
+            source_name = dataset_source_name(article_data, qa_data)
+            return create_json_file(qa_data, prefix=f"{source_name}_qa_")
 
         download_articles_button.click(
             fn=handle_article_download_click,
@@ -502,7 +526,7 @@ def build_save_tab(articles_state: gr.State, qa_data_state: gr.State) -> None:
         )
         download_qa_button.click(
             fn=handle_qa_download_click,
-            inputs=[qa_json],
+            inputs=[qa_json, article_json],
             outputs=[qa_file],
         )
 

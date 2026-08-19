@@ -23,54 +23,41 @@ def create_json_file(data: Any, prefix: str = "data_") -> str:
 
 
 def parse_qa_output(llm_output: str | None) -> dict[str, str] | None:
-    """
-    Parses the LLM output string to extract the Question and Answer.
+    """Normalize JSON or labeled question-and-answer model output."""
 
-    Args:
-        llm_output: The raw string output from the Language Model.
-
-    Returns:
-        A dictionary with 'question' and 'answer' keys if parsing is successful,
-        otherwise None.
-    """
-    # --- Regex Explanation ---
-    # r"..." : Raw string to avoid issues with backslashes
-    # Question: : Matches the literal "Question:" label.
-    # \s* : Matches zero or more whitespace characters (spaces, tabs, newlines).
-    #       Handles potential spaces/newlines after the label.
-    # (.*?) : Capturing Group 1 (The Question)
-    #   . : Matches any character (except newline by default)
-    #   * : Matches the previous character zero or more times
-    #   ? : Makes the '*' non-greedy, so it stops matching as soon
-    #       as the next part of the pattern (Answer:) is found.
-    # \s* : Matches whitespace between the end of the question and the Answer label.
-    # Answer: : Matches the literal "Answer:" label.
-    # \s* : Matches whitespace after the Answer label.
-    # (.*) : Capturing Group 2 (The Answer)
-    #   . : Matches any character (including newline because of re.DOTALL)
-    #   * : Matches zero or more times (greedy - takes rest of the string)
-    # re.IGNORECASE : Makes "Question:" and "Answer:" matching case-insensitive.
-    # re.DOTALL : Makes the '.' character match newlines as well. Crucial if the
-    #             question or (more likely) the answer spans multiple lines.
-
-    if not llm_output:
-        print("`llm_output` should be defined.")
+    if not llm_output or not llm_output.strip():
         return None
 
-    pattern = r"Question:\s*(.*?)\s*Answer:\s*(.*)"
-    match = re.search(pattern, llm_output, re.IGNORECASE | re.DOTALL)
+    text = llm_output.strip()
+    json_candidates = [text]
+    code_block = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if code_block:
+        json_candidates.insert(0, code_block.group(1))
 
-    if match:
-        question = match.group(1).strip()
-        answer = match.group(2).strip()
-        if not question or not answer:
-            return None
-        return {"question": question, "answer": answer}
+    for candidate in json_candidates:
+        try:
+            decoded = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(decoded, dict):
+            continue
+        question = decoded.get("question")
+        answer = decoded.get("answer")
+        if isinstance(question, str) and isinstance(answer, str):
+            question, answer = question.strip(), answer.strip()
+            if question and answer:
+                return {"question": question, "answer": answer}
 
-    else:
-        # Handle cases where the pattern wasn't found at all
-        print(f"Warning: Could not parse Q/A structure from: {llm_output}")
+    pattern = r"(?:Question|问题)\s*[:：]\s*(.*?)\s*(?:Answer|答案)\s*[:：]\s*(.*)"
+    match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+    if not match:
         return None
+
+    question = match.group(1).strip()
+    answer = match.group(2).strip()
+    if not question or not answer:
+        return None
+    return {"question": question, "answer": answer}
 
 
 def clean_text(text: str) -> str:

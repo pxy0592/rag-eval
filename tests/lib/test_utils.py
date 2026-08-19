@@ -52,6 +52,16 @@ from src.lib.utils import parse_qa_output
             {"question": "Test Question?", "answer": "Test Answer.\nSome text after."},
         ),
         ("minimal_valid", "Question:Q\nAnswer:A", {"question": "Q", "answer": "A"}),
+        (
+            "chinese_full_width_labels",
+            "问题：截至2014年，该单位共有多少人？\n答案：4797人。",
+            {"question": "截至2014年，该单位共有多少人？", "answer": "4797人。"},
+        ),
+        (
+            "json_code_block",
+            "```json\n{\"question\": \"问题？\", \"answer\": \"答案。\"}\n```",
+            {"question": "问题？", "answer": "答案。"},
+        ),
     ],
 )
 def test_parse_qa_output_success(test_id, input_string, expected_output):

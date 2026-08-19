@@ -97,6 +97,26 @@ def test_smartq_page_navigation_never_requests_page_zero(main_module, monkeypatc
     main_module.get_smartq_knowledge_page.assert_called_once_with("kb-1", 1)
 
 
+def test_dataset_source_name_uses_matching_article_source(main_module):
+    smartq_articles = [
+        {"title": "中文知识", "source": "http://smartq/api/v1/knowledge/id-1"}
+    ]
+    wikipedia_articles = [
+        {"title": "Prime number", "source": "https://en.wikipedia.org/?curid=1"}
+    ]
+
+    assert main_module.dataset_source_name(smartq_articles) == "smartq"
+    assert main_module.dataset_source_name(wikipedia_articles) == "wikipedia"
+    assert (
+        main_module.dataset_source_name(
+            smartq_articles,
+            [{"article_title": "中文知识"}],
+        )
+        == "smartq"
+    )
+    assert main_module.dataset_source_name(smartq_articles + wikipedia_articles) == "dataset"
+
+
 def test_generate_and_add_qa(main_module, article, monkeypatch):
     generated = SimpleNamespace(question="Generated?", answer="Generated.")
     monkeypatch.setattr(main_module, "generate", Mock(return_value=generated))

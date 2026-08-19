@@ -74,6 +74,26 @@ def test_generate_dev(monkeypatch):
     assert client.chat.completions.create.call_args.kwargs["max_tokens"] == 12
 
 
+def test_generate_dev_accepts_chinese_labeled_output(monkeypatch):
+    client = FakeOpenAI()
+    client.chat.completions.create.return_value = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content="问题：截至2014年，该单位共有多少人？\n答案：4797人。"
+                )
+            )
+        ]
+    )
+    monkeypatch.setattr(llm_module, "OpenAI", FakeOpenAI)
+    monkeypatch.setattr(llm_module.settings, "ENVIRONMENT", "dev")
+
+    result = llm_module.generate("prompt", client)
+
+    assert result.question == "截至2014年，该单位共有多少人？"
+    assert result.answer == "4797人。"
+
+
 def test_generate_prod(monkeypatch):
     monkeypatch.setattr(llm_module, "LLM", FakeLLM)
     monkeypatch.setattr(llm_module.settings, "ENVIRONMENT", "prod")

@@ -3,6 +3,7 @@ from vllm import LLM, SamplingParams
 from vllm.sampling_params import StructuredOutputsParams
 
 from .types import QAFormat
+from .utils import parse_qa_output
 from ..settings import settings
 
 
@@ -81,4 +82,13 @@ def generate(prompt: str, llm: LLM | OpenAI, params: dict = {}) -> QAFormat:
         case _:
             raise ValueError("Correctly configure the env to be dev | prod")
 
-    return QAFormat.model_validate_json(response)
+    try:
+        return QAFormat.model_validate_json(response)
+    except ValueError as error:
+        parsed_output = parse_qa_output(response)
+        if parsed_output:
+            return QAFormat.model_validate(parsed_output)
+        raise ValueError(
+            "Model output must be a JSON object with question and answer fields, "
+            "or use Question/Answer or 问题/答案 labels."
+        ) from error
