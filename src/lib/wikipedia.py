@@ -106,7 +106,7 @@ class WikipediaProcessor:
             chunks=resized_chunks,
         )
 
-wk = wiki.Wikipedia(user_agent="WikiQA (merlin@example.com)", language="en")
+wk = wiki.Wikipedia(user_agent="SmartQ Dataset Generator (merlin@example.com)", language="en")
 
 
 def get_wikipedia_article(

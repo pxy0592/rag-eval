@@ -1,8 +1,8 @@
-# 🧠 WikiQA Dataset Creator
+# 🧠 SmartQ Dataset Creator
 
 ![screenshot](paper/ui.png)
 
-**WikiQA** is a tool for generating **synthetic question–answer datasets** using **Wikipedia** and **Large Language Models (LLMs)**.
+**SmartQ Dataset Creator** generates **synthetic question–answer datasets** from **SmartQ knowledge bases**, Wikipedia, and Large Language Models (LLMs).
 It was developed to support the evaluation of **Retrieval-Augmented Generation (RAG)** systems, particularly [this RAG evaluator](https://github.com/humankernel/rag-revamped).
 
 ## 📚 Selected Wikipedia Topics
@@ -58,7 +58,7 @@ Each question type is designed to stress different aspects of retrieval and gene
 
 ## 📊 Evaluation Metrics
 
-Although WikiQA only generates datasets, it is designed around **RAG evaluation metrics** (see [Key Metrics and Evaluation Methods for RAG](https://www.youtube.com/watch?v=cRz0BWkuwHg)).
+Although SmartQ Dataset Creator only generates datasets, it is designed around **RAG evaluation metrics** (see [Key Metrics and Evaluation Methods for RAG](https://www.youtube.com/watch?v=cRz0BWkuwHg)).
 
 ### 🔍 Retrieval Metrics
 

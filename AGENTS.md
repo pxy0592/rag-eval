@@ -2,35 +2,43 @@
 
 ## Project Structure & Module Organization
 
-This repository is a Python 3.12 WikiQA dataset generator for RAG evaluation.
+This Python 3.12 project creates RAG evaluation datasets from SmartQ knowledge bases and optional Wikipedia articles.
 
-- `src/main.py` defines the Gradio workflow and application entry point.
-- `src/settings.py` loads environment-based runtime settings.
-- `src/lib/` contains reusable modules: LLM clients and prompting (`llm.py`, `prompt.py`), Pydantic data models (`types.py`), text/file helpers (`utils.py`), and Wikipedia retrieval/chunking (`wikipedia.py`).
-- `tests/` mirrors the source responsibilities, with shared application tests in `tests/test_main.py` and module tests under `tests/lib/`.
-- `dataset/` stores JSONL input/output data; `paper/` contains the Typst paper and visual assets. Treat generated datasets and paper artifacts as deliberate changes.
+- `src/main.py` defines the Gradio workflow, source selection, and paginated SmartQ UI callbacks.
+- `src/settings.py` reads model, OpenAI-compatible, and SmartQ environment settings.
+- `src/lib/smartq.py` is the authenticated SmartQ REST client. It lists knowledge and chunks by page, then builds complete `Article` objects for Q/A generation.
+- `src/lib/` also contains LLM/prompt code, Pydantic models, utilities, and Wikipedia retrieval.
+- `tests/` mirrors source responsibilities: application flow in `tests/test_main.py`, library tests in `tests/lib/`.
+- `dataset/` holds JSONL data; `paper/` contains Typst source and visual assets. Treat generated data and paper artifacts as deliberate changes.
 
 ## Build, Test, and Development Commands
 
-Use `uv` to keep dependencies aligned with `uv.lock`:
+Use `uv` so dependencies match `uv.lock`:
 
 ```bash
 uv sync                         # install runtime and development dependencies
 uv run pytest                   # run the complete test suite
 uv run pytest --cov=src         # run tests with coverage reporting
-uv run python -m src.main       # launch the local Gradio UI
+uv run python -m src.main       # launch the Gradio UI
 ```
 
-Copy `.env.example` to `.env` before running the UI and configure `LLM_MODEL`, `DTYPE`, `ENVIRONMENT` (`dev` or `prod`), and `CLIENT_URL`. Never commit `.env` or credentials.
+Copy `.env.example` to `.env`. For development-model mode, set `ENVIRONMENT=dev`, `CLIENT_URL`, `OPENAI_API_KEY`, and `LLM_MODEL`. For SmartQ, set the **backend** base URL—not the documentation UI—and an API key:
+
+```dotenv
+SMARTQ_API_URL=http://localhost:8080
+SMARTQ_API_KEY=sk-...
+```
+
+Never commit `.env`, API keys, or downloaded private knowledge content.
 
 ## Coding Style & Naming Conventions
 
-Follow standard Python style with 4-space indentation, readable line lengths, and type annotations for public functions. Use `snake_case` for functions, variables, and test names; `PascalCase` for classes and Pydantic models; and uppercase names for configuration fields. Keep UI callbacks thin and place reusable behavior in `src/lib/`. No repository-wide formatter or linter is configured, so review imports, formatting, and dead code before committing.
+Use 4-space indentation, clear type annotations, `snake_case` for functions/tests, `PascalCase` for models, and uppercase configuration names. Keep Gradio callbacks thin; put SmartQ HTTP and pagination logic in `src/lib/smartq.py`. Preserve SmartQ’s `X-API-Key` header and its `data`/`total` pagination envelope. The UI page size is 20; do not silently change it without updating tests and labels.
 
 ## Testing Guidelines
 
-Tests use `pytest`, fixtures, parametrization, and mocks for network and LLM boundaries. Name files `test_*.py` and tests `test_<behavior>`. Add or update focused unit tests whenever changing parsing, chunking, model validation, configuration, or UI callback behavior. Keep tests deterministic: mock Wikipedia requests and model clients rather than requiring network access or GPUs.
+Use `pytest`, fixtures, parametrization, and mocks for model, network, and SmartQ API boundaries. Name tests `test_<behavior>`. Cover SmartQ page navigation, Chinese titles, chunk ordering, API errors, and missing configuration. Mock API responses; tests must not require a live SmartQ server, GPU, or external Wikipedia connection.
 
 ## Commit & Pull Request Guidelines
 
-Use concise, imperative, conventional-style prefixes such as `feat:`, `fix:`, `test:`, `refact:`, `build:`, or `docs:`; explain the user-visible or maintenance intent. Pull requests should describe the change, validation commands, configuration assumptions, and any dataset or paper artifacts affected. Include screenshots for visible Gradio UI changes and link related issues when applicable.
+Use concise conventional prefixes such as `feat:`, `fix:`, `test:`, `refact:`, `build:`, or `docs:`. PRs should describe user-visible behavior, validation commands, configuration assumptions, and affected data artifacts. Include screenshots for visible Gradio changes and link related issues when available.

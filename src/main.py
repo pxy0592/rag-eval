@@ -22,7 +22,7 @@ from .settings import settings
 
 # --- Constants ---
 
-SOURCES = ["Wikipedia", "SmartQ"]
+SOURCES = ["SmartQ", "Wikipedia"]
 LANGUAGES = ["en", "es", "cn"]
 TYPES_QUERIES = ["factual", "multihop"]
 MAX_CHUNKS_PER_QA = 3
@@ -215,7 +215,7 @@ def build_article_tab(articles_state: gr.State) -> None:
             value=SOURCES[0],
         )
 
-        with gr.Group(visible=True) as wikipedia_controls:
+        with gr.Group(visible=False) as wikipedia_controls:
             with gr.Row():
                 languages = gr.Dropdown(
                     label="Language(s)",
@@ -234,7 +234,7 @@ def build_article_tab(articles_state: gr.State) -> None:
                 outputs=[articles_state],
             )
 
-        with gr.Group(visible=False) as smartq_controls:
+        with gr.Group(visible=True) as smartq_controls:
             gr.Markdown(
                 "SmartQ knowledge and chunk lists load 20 items per page from the "
                 "server. Chinese titles are displayed unchanged."
@@ -515,9 +515,9 @@ def launch() -> None:
         articles = gr.State([])
         qa_data = gr.State([])
 
-        gr.Markdown("# WikiQA: Dataset Generator")
+        gr.Markdown("# SmartQ: Dataset Generator")
         gr.Markdown(
-            "Generate Question/Answer pairs from Wikipedia articles."
+            "Generate Question/Answer pairs from SmartQ knowledge or Wikipedia articles. "
             "**Workflow:** (1) Fetch Article -> (2) Generate Q/A -> (3) Save Dataset."
         )
 
