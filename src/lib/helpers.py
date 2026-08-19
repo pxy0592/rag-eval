@@ -3,7 +3,7 @@ from functools import lru_cache
 
 import tiktoken
 
-from lib.types import ChatMessage, Message
+from .types import ChatMessage, Message
 
 log = logging.getLogger("app")
 

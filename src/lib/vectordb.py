@@ -2,20 +2,21 @@ import logging
 import pickle
 import time
 from pathlib import Path
+from tempfile import gettempdir
 
 import numpy as np
 import torch
 from numpy.typing import NDArray
 
-from lib.models.embedding import (
+from .models.embedding import (
     EmbeddingModel,
     calculate_hybrid_scores,
     colbert_similarity,
     dense_similarity,
     sparse_similarity,
 )
-from lib.models.rerank import RerankerModel
-from lib.types import Chunk, Document, RetrievedChunk
+from .models.rerank import RerankerModel
+from .types import Chunk, Document, RetrievedChunk
 
 log = logging.getLogger("app")
 
@@ -23,13 +24,13 @@ class KnowledgeBase:
     def __init__(self, name: str, test: bool = False) -> None:
         assert name
         self.name = name
-        self.db_path = (
-            Path(__file__).resolve().parent.parent.parent
-            / "data"
-            / name
-            / "vectordb.pkl"
-        )
         self.test = test
+        data_dir = (
+            Path(gettempdir()) / "rag-eval"
+            if test
+            else Path(__file__).resolve().parent.parent.parent / "data"
+        )
+        self.db_path = data_dir / name / "vectordb.pkl"
         self.documents: list[Document] = []
         self.chunks: list[Chunk] = []
         self.dense_embeddings: NDArray | None = None
@@ -131,12 +132,19 @@ class KnowledgeBase:
         )
 
         if reranker_model:
-            top_texts = (self.chunks[idx].text for idx in top_indices.tolist())
-            pairs = list((query, text) for text in top_texts)
-            rerank_scores = reranker_model.compute_score(pairs)
-            scores, top_indices = torch.topk(
+            candidate_indices = top_indices
+            top_texts = (
+                self.chunks[idx].text or "" for idx in candidate_indices.tolist()
+            )
+            pairs = [(query, text) for text in top_texts]
+            raw_rerank_scores = reranker_model.compute_score(pairs).flatten()
+            # Reranker backends can return unbounded logits. Convert those values
+            # into per-query relevance probabilities before applying the threshold.
+            rerank_scores = torch.softmax(raw_rerank_scores, dim=0)
+            scores, rerank_positions = torch.topk(
                 rerank_scores, k=min(top_r, len(rerank_scores))
             )
+            top_indices = candidate_indices[rerank_positions]
 
         retrieved_chunks = []
         for idx in top_indices[scores >= threshold].tolist():

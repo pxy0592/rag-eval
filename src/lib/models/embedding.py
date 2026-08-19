@@ -6,7 +6,7 @@ from FlagEmbedding import BGEM3FlagModel
 from numpy.typing import NDArray
 from torch.nn.utils.rnn import pad_sequence
 
-from lib.settings import settings
+from ..settings import settings
 
 
 class EmbeddingOutput(TypedDict):

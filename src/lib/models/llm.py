@@ -4,11 +4,11 @@ from typing import Generator, Type
 import vllm
 from openai import OpenAI
 from pydantic import BaseModel
-from vllm.sampling_params import GuidedDecodingParams
+from vllm.sampling_params import StructuredOutputsParams
 
-from lib.helpers import count_tokens
-from lib.settings import settings
-from lib.types import ChatMessage, GenerationParams
+from ..helpers import count_tokens
+from ..settings import settings
+from ..types import ChatMessage, GenerationParams
 
 DEFAULT_PARAMS: GenerationParams = {
     "max_tokens": 500,
@@ -85,7 +85,6 @@ class vLLMClient:
             enable_chunked_prefill=True,
             gpu_memory_utilization=0.6,
             reasoning_parser="deepseek_r1",
-            guided_decoding_backend="xgrammar"
         )
 
     def generate(
@@ -102,7 +101,7 @@ class vLLMClient:
             prompt,
             sampling_params=vllm.SamplingParams(
                 **params,
-                guided_decoding=GuidedDecodingParams(
+                structured_outputs=StructuredOutputsParams(
                     json=output_format.model_json_schema()
                 )
                 if output_format

@@ -1,6 +1,6 @@
 import timeit
 
-from lib.models.embedding import EmbeddingModel
+from ..lib.models.embedding import EmbeddingModel
 
 
 def benchmark_embedding_model(

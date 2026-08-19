@@ -5,7 +5,7 @@ from langchain_openai import ChatOpenAI
 from ragas import EvaluationDataset, evaluate
 from ragas.llms import LangchainLLMWrapper
 from ragas.metrics import FactualCorrectness, Faithfulness, LLMContextRecall
-from lib.settings import settings
+from ..lib.settings import settings
 
 from metrics import (
     calc_map,

@@ -3,11 +3,11 @@ from pathlib import Path
 
 from utils import DatasetDocument, DatasetQA, EvaluationDataset
 
-from core.generation import generate_answer
-from lib.models.embedding import EmbeddingModel
-from lib.models.llm import OpenAIClient
-from lib.models.rerank import RerankerModel
-from lib.vectordb import KnowledgeBase
+from ..core.generation import generate_answer
+from ..lib.models.embedding import EmbeddingModel
+from ..lib.models.llm import OpenAIClient
+from ..lib.models.rerank import RerankerModel
+from ..lib.vectordb import KnowledgeBase
 
 # Configuration ----------------------------------------------------------------
 

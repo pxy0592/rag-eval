@@ -1,5 +1,5 @@
 import timeit
-from lib.models.llm import OpenAIClient
+from ..lib.models.llm import OpenAIClient
 
 
 def benchmark(prompts, model, runs=5):
