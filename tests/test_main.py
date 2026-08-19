@@ -117,6 +117,31 @@ def test_dataset_source_name_uses_matching_article_source(main_module):
     assert main_module.dataset_source_name(smartq_articles + wikipedia_articles) == "dataset"
 
 
+def test_generate_uses_qa_pair_already_in_selected_chunk(main_module, monkeypatch):
+    article = Article(
+        title="已有问答",
+        source="http://smartq/api/v1/knowledge/id-1",
+        language="cn",
+        chunks=[
+            Chunk(
+                heading="分块 1",
+                level=1,
+                content="问题：截至2014年，该单位共有多少人？\n答案：4797人。",
+            )
+        ],
+    )
+    generate = Mock()
+    monkeypatch.setattr(main_module, "generate", generate)
+
+    question, answer = main_module.generate_syntetic_qa_pair(
+        "factual", article, [0]
+    )
+
+    assert question["value"] == "截至2014年，该单位共有多少人？"
+    assert answer["value"] == "4797人。"
+    generate.assert_not_called()
+
+
 def test_generate_and_add_qa(main_module, article, monkeypatch):
     generated = SimpleNamespace(question="Generated?", answer="Generated.")
     monkeypatch.setattr(main_module, "generate", Mock(return_value=generated))

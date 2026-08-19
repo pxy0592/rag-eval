@@ -15,8 +15,8 @@ from .lib.smartq import (
     SmartQClient,
     SmartQKnowledgePage,
 )
-from .lib.types import QA, Article
-from .lib.utils import create_json_file, format_context
+from .lib.types import QA, QAFormat, Article, Chunk
+from .lib.utils import create_json_file, format_context, parse_qa_output
 from .lib.wikipedia import get_wikipedia_article
 from .settings import settings
 
@@ -154,19 +154,33 @@ def update_source_controls(source: str):
     return gr.update(visible=not is_smartq), gr.update(visible=is_smartq)
 
 
+def qa_pair_from_chunks(chunks: list[Chunk]) -> QAFormat | None:
+    """Return the first Q/A pair already present in a selected chunk."""
+
+    for chunk in chunks:
+        parsed_output = parse_qa_output(chunk.content)
+        if parsed_output:
+            return QAFormat.model_validate(parsed_output)
+    return None
+
+
 def generate_syntetic_qa_pair(
     type_q: Literal["factual", "multihop"],
     article: Article,
     chunks_idx: list[int],
 ):
     chunks = [article.chunks[chunk_idx] for chunk_idx in chunks_idx]
-    context = format_context(chunks)
-    match type_q:
-        case "factual":
-            prompt = PROMPT["factual_qa_pair"].format(context=context)
+    qa_pair = qa_pair_from_chunks(chunks)
 
     try:
-        qa_pair = generate(prompt=prompt, llm=llm)
+        if qa_pair is None:
+            context = format_context(chunks)
+            match type_q:
+                case "factual":
+                    prompt = PROMPT["factual_qa_pair"].format(context=context)
+                case _:
+                    raise ValueError(f"Unsupported question type: {type_q}")
+            qa_pair = generate(prompt=prompt, llm=llm)
         return (
             gr.update(
                 value=qa_pair.question,
