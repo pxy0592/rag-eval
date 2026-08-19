@@ -9,40 +9,149 @@ import pandas as pd
 
 from .lib.llm import generate, get_client
 from .lib.prompt import PROMPT
+from .lib.smartq import (
+    SmartQAPIError,
+    SmartQChunkPage,
+    SmartQClient,
+    SmartQKnowledgePage,
+)
 from .lib.types import QA, Article
 from .lib.utils import create_json_file, format_context
 from .lib.wikipedia import get_wikipedia_article
+from .settings import settings
 
 # --- Constants ---
 
-SOURCES = ["Wikipedia"]
-LANGUAGES = ["en", "es"]
+SOURCES = ["Wikipedia", "SmartQ"]
+LANGUAGES = ["en", "es", "cn"]
 TYPES_QUERIES = ["factual", "multihop"]
 MAX_CHUNKS_PER_QA = 3
+SMARTQ_PAGE_SIZE = 20
 llm = get_client()
 
 # --- Backend & Data Handling
 
 
-def get_articles(
-    source: Literal["Wikipedia"], title: str, langs: list[str]
-) -> list[Article]:
+def get_articles(source: str, title: str, langs: list[str]) -> list[Article]:
+    """Fetch Wikipedia articles; SmartQ uses its knowledge-base controls instead."""
+
     articles: list[Article] = []
+    try:
+        if source != "Wikipedia":
+            raise ValueError(
+                f"Unsupported source: '{source}'. Use the SmartQ knowledge-base controls"
+            )
+        articles = get_wikipedia_article(title, langs)
+    except ConnectionError as error:
+        print(f"Network error while fetching from {source}: {error}")
+    except Exception as error:
+        print(f"Unexpected error fetching articles: {error}")
+    return articles
+
+
+def get_smartq_knowledge_page(
+    knowledge_base_id: str | None, page: int
+) -> SmartQKnowledgePage:
+    """Fetch one server-backed, 20-item page of SmartQ knowledge titles."""
+
+    client = SmartQClient(settings.SMARTQ_API_URL, settings.SMARTQ_API_KEY)
+    return client.list_knowledge_page(knowledge_base_id, page, SMARTQ_PAGE_SIZE)
+
+
+def get_smartq_chunk_page(
+    knowledge_id: str | None, page: int
+) -> SmartQChunkPage:
+    """Fetch one server-backed, 20-item page of SmartQ text chunks."""
+
+    client = SmartQClient(settings.SMARTQ_API_URL, settings.SMARTQ_API_KEY)
+    return client.get_chunk_page(knowledge_id, page, SMARTQ_PAGE_SIZE)
+
+
+def _page_status(label: str, page: SmartQKnowledgePage | SmartQChunkPage) -> str:
+    if page.total == 0:
+        return f"No {label.lower()} found."
+    first = (page.page - 1) * page.page_size + 1
+    last = min(first + len(page.items) - 1, page.total)
+    total_pages = max(1, (page.total + page.page_size - 1) // page.page_size)
+    return f"{label}: {first}-{last} of {page.total} (page {page.page}/{total_pages})"
+
+
+def _knowledge_page_updates(knowledge_base_id: str | None, page: int):
+    try:
+        knowledge_page = get_smartq_knowledge_page(knowledge_base_id, page)
+    except SmartQAPIError as error:
+        raise gr.Error(str(error)) from error
+
+    choices = [(knowledge.title, knowledge.id) for knowledge in knowledge_page.items]
+    return (
+        gr.update(choices=choices, value=None),
+        knowledge_base_id,
+        knowledge_page.page,
+        _page_status("Knowledges", knowledge_page),
+        gr.update(interactive=knowledge_page.has_previous),
+        gr.update(interactive=knowledge_page.has_next),
+    )
+
+
+def load_smartq_knowledge_page(knowledge_base_id: str | None):
+    """Load the first server-backed page after a knowledge base is entered."""
+
+    return _knowledge_page_updates(knowledge_base_id, 1)
+
+
+def previous_smartq_knowledge_page(knowledge_base_id: str | None, page: int):
+    return _knowledge_page_updates(knowledge_base_id, max(1, page - 1))
+
+
+def next_smartq_knowledge_page(knowledge_base_id: str | None, page: int):
+    return _knowledge_page_updates(knowledge_base_id, page + 1)
+
+
+def _chunk_rows(chunk_page: SmartQChunkPage) -> list[list[str | int]]:
+    return [[chunk.index + 1, chunk.content] for chunk in chunk_page.items]
+
+
+def _chunk_page_updates(knowledge_id: str | None, page: int):
+    try:
+        chunk_page = get_smartq_chunk_page(knowledge_id, page)
+    except SmartQAPIError as error:
+        raise gr.Error(str(error)) from error
+
+    return (
+        _chunk_rows(chunk_page),
+        chunk_page.page,
+        _page_status("Chunks", chunk_page),
+        gr.update(interactive=chunk_page.has_previous),
+        gr.update(interactive=chunk_page.has_next),
+    )
+
+
+def previous_smartq_chunk_page(knowledge_id: str | None, page: int):
+    return _chunk_page_updates(knowledge_id, max(1, page - 1))
+
+
+def next_smartq_chunk_page(knowledge_id: str | None, page: int):
+    return _chunk_page_updates(knowledge_id, page + 1)
+
+
+def fetch_smartq_article(knowledge_id: str | None):
+    """Fetch all chunks for Q/A and the first server-backed display page."""
 
     try:
-        match source:
-            case "Wikipedia":
-                articles = get_wikipedia_article(title, langs)
-            case _:
-                raise ValueError(
-                    f"Unsupported source: '{source}'. Only 'Wikipedia' is currently supported."
-                )
-    except ConnectionError as e:
-        print(f"Network error while fetching from {source}: {str(e)}")
-    except Exception as e:
-        print(f"Unexpected error fetching articles: {str(e)}")
+        client = SmartQClient(settings.SMARTQ_API_URL, settings.SMARTQ_API_KEY)
+        article = client.get_article(knowledge_id)
+    except SmartQAPIError as error:
+        raise gr.Error(str(error)) from error
 
-    return articles
+    chunk_updates = _chunk_page_updates(knowledge_id, 1)
+    return ([article], knowledge_id, *chunk_updates)
+
+
+def update_source_controls(source: str):
+    """Show the controls appropriate to the selected article source."""
+
+    is_smartq = source == "SmartQ"
+    return gr.update(visible=not is_smartq), gr.update(visible=is_smartq)
 
 
 def generate_syntetic_qa_pair(
@@ -100,27 +209,141 @@ def add_to_qa_dataset(
 
 def build_article_tab(articles_state: gr.State) -> None:
     with gr.Tab("(1) Get Article"):
-        with gr.Row():
-            source = gr.Dropdown(
-                label="Sources",
-                choices=SOURCES,
-                value=SOURCES[0],
-            )
-            languages = gr.Dropdown(
-                label="Language(s)",
-                choices=LANGUAGES,
-                value=LANGUAGES[0],
-                multiselect=True,
-            )
-        title = gr.Textbox(
-            label="Article Title",
-            placeholder="Example: Artificial Intelligence",
-            submit_btn=True,
+        source = gr.Dropdown(
+            label="Source",
+            choices=SOURCES,
+            value=SOURCES[0],
         )
-        title.submit(
-            get_articles,
-            inputs=[source, title, languages],
-            outputs=[articles_state],
+
+        with gr.Group(visible=True) as wikipedia_controls:
+            with gr.Row():
+                languages = gr.Dropdown(
+                    label="Language(s)",
+                    choices=LANGUAGES,
+                    value=LANGUAGES[0],
+                    multiselect=True,
+                )
+                title = gr.Textbox(
+                    label="Wikipedia article title",
+                    placeholder="Example: Artificial Intelligence",
+                    submit_btn=True,
+                )
+            title.submit(
+                get_articles,
+                inputs=[source, title, languages],
+                outputs=[articles_state],
+            )
+
+        with gr.Group(visible=False) as smartq_controls:
+            gr.Markdown(
+                "SmartQ knowledge and chunk lists load 20 items per page from the "
+                "server. Chinese titles are displayed unchanged."
+            )
+            knowledge_base_id = gr.Textbox(label="SmartQ knowledge base ID")
+            knowledge_base_state = gr.State("")
+            knowledge_page_state = gr.State(1)
+            list_knowledges_button = gr.Button("List SmartQ knowledge")
+            knowledge_id = gr.Radio(
+                label="SmartQ knowledges",
+                choices=[],
+                interactive=True,
+            )
+            knowledge_page_status = gr.Markdown("Enter a knowledge base ID to begin.")
+            with gr.Row():
+                previous_knowledge_button = gr.Button("Previous", interactive=False)
+                next_knowledge_button = gr.Button("Next", interactive=False)
+
+            selected_knowledge_state = gr.State("")
+            chunk_page_state = gr.State(1)
+            fetch_smartq_button = gr.Button("Fetch selected SmartQ article")
+            smartq_chunks = gr.Dataframe(
+                headers=["Chunk", "Content"],
+                datatype=["number", "str"],
+                label="SmartQ chunks",
+                interactive=False,
+                wrap=True,
+            )
+            chunk_page_status = gr.Markdown("Select and fetch a knowledge entry to list chunks.")
+            with gr.Row():
+                previous_chunk_button = gr.Button("Previous", interactive=False)
+                next_chunk_button = gr.Button("Next", interactive=False)
+
+            list_knowledges_button.click(
+                load_smartq_knowledge_page,
+                inputs=[knowledge_base_id],
+                outputs=[
+                    knowledge_id,
+                    knowledge_base_state,
+                    knowledge_page_state,
+                    knowledge_page_status,
+                    previous_knowledge_button,
+                    next_knowledge_button,
+                ],
+            )
+            previous_knowledge_button.click(
+                previous_smartq_knowledge_page,
+                inputs=[knowledge_base_state, knowledge_page_state],
+                outputs=[
+                    knowledge_id,
+                    knowledge_base_state,
+                    knowledge_page_state,
+                    knowledge_page_status,
+                    previous_knowledge_button,
+                    next_knowledge_button,
+                ],
+            )
+            next_knowledge_button.click(
+                next_smartq_knowledge_page,
+                inputs=[knowledge_base_state, knowledge_page_state],
+                outputs=[
+                    knowledge_id,
+                    knowledge_base_state,
+                    knowledge_page_state,
+                    knowledge_page_status,
+                    previous_knowledge_button,
+                    next_knowledge_button,
+                ],
+            )
+            fetch_smartq_button.click(
+                fetch_smartq_article,
+                inputs=[knowledge_id],
+                outputs=[
+                    articles_state,
+                    selected_knowledge_state,
+                    smartq_chunks,
+                    chunk_page_state,
+                    chunk_page_status,
+                    previous_chunk_button,
+                    next_chunk_button,
+                ],
+            )
+            previous_chunk_button.click(
+                previous_smartq_chunk_page,
+                inputs=[selected_knowledge_state, chunk_page_state],
+                outputs=[
+                    smartq_chunks,
+                    chunk_page_state,
+                    chunk_page_status,
+                    previous_chunk_button,
+                    next_chunk_button,
+                ],
+            )
+            next_chunk_button.click(
+                next_smartq_chunk_page,
+                inputs=[selected_knowledge_state, chunk_page_state],
+                outputs=[
+                    smartq_chunks,
+                    chunk_page_state,
+                    chunk_page_status,
+                    previous_chunk_button,
+                    next_chunk_button,
+                ],
+            )
+
+        source.change(
+            update_source_controls,
+            inputs=[source],
+            outputs=[wikipedia_controls, smartq_controls],
         )
 
         @gr.render([articles_state])
@@ -137,12 +360,13 @@ def build_article_tab(articles_state: gr.State) -> None:
                     gr.Markdown("**Summary:**")
                     gr.Markdown(article.summary or "No summary available.")
 
-                    gr.Markdown("**Chunks:**")
-                    if article.chunks:
-                        df = pd.DataFrame(article.chunks)
-                        gr.DataFrame(df, wrap=True)
-                    else:
-                        gr.Markdown("No chunks found for this article.")
+                    if article.language != "cn":
+                        gr.Markdown("**Chunks:**")
+                        if article.chunks:
+                            df = pd.DataFrame(article.chunks)
+                            gr.DataFrame(df, wrap=True)
+                        else:
+                            gr.Markdown("No chunks found for this article.")
 
 
 def build_qa_tab(articles_state: gr.State, qa_data_state: gr.State) -> None:

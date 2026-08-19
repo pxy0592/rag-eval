@@ -9,6 +9,7 @@ for proxy_name in ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "http_
 import gradio as gr
 import pytest
 
+from src.lib.smartq import SmartQChunk, SmartQChunkPage, SmartQKnowledge, SmartQKnowledgePage
 from src.lib.types import Article, Chunk, QA
 
 
@@ -47,6 +48,53 @@ def test_get_articles_success_and_errors(main_module, article, monkeypatch, caps
 def test_get_articles_rejects_unknown_source(main_module, capsys):
     assert main_module.get_articles("Other", "Test", ["en"]) == []
     assert "Unsupported source" in capsys.readouterr().out
+
+
+def test_smartq_knowledge_and_chunk_page_controls(main_module, monkeypatch):
+    knowledge_page = SmartQKnowledgePage(
+        items=[SmartQKnowledge(id="knowledge-21", title="第二十一篇知识")],
+        page=2,
+        page_size=20,
+        total=21,
+    )
+    chunk_page = SmartQChunkPage(
+        items=[SmartQChunk(index=20, content="第二十一段")],
+        page=2,
+        page_size=20,
+        total=41,
+    )
+    monkeypatch.setattr(
+        main_module, "get_smartq_knowledge_page", Mock(return_value=knowledge_page)
+    )
+    monkeypatch.setattr(
+        main_module, "get_smartq_chunk_page", Mock(return_value=chunk_page)
+    )
+
+    knowledge_updates = main_module.load_smartq_knowledge_page("kb-1")
+    chunk_updates = main_module.next_smartq_chunk_page("knowledge-1", 1)
+
+    assert knowledge_updates[0]["choices"] == [("第二十一篇知识", "knowledge-21")]
+    assert knowledge_updates[1:4] == ("kb-1", 2, "Knowledges: 21-21 of 21 (page 2/2)")
+    assert knowledge_updates[4]["interactive"] is True
+    assert knowledge_updates[5]["interactive"] is False
+    main_module.get_smartq_knowledge_page.assert_called_once_with("kb-1", 1)
+
+    assert chunk_updates[0] == [[21, "第二十一段"]]
+    assert chunk_updates[1:3] == (2, "Chunks: 21-21 of 41 (page 2/3)")
+    assert chunk_updates[3]["interactive"] is True
+    assert chunk_updates[4]["interactive"] is True
+    main_module.get_smartq_chunk_page.assert_called_once_with("knowledge-1", 2)
+
+
+def test_smartq_page_navigation_never_requests_page_zero(main_module, monkeypatch):
+    knowledge_page = SmartQKnowledgePage(items=[], page=1, page_size=20, total=0)
+    monkeypatch.setattr(
+        main_module, "get_smartq_knowledge_page", Mock(return_value=knowledge_page)
+    )
+
+    main_module.previous_smartq_knowledge_page("kb-1", 1)
+
+    main_module.get_smartq_knowledge_page.assert_called_once_with("kb-1", 1)
 
 
 def test_generate_and_add_qa(main_module, article, monkeypatch):

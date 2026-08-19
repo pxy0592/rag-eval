@@ -18,6 +18,8 @@ class Settings(BaseModel):
     ENVIRONMENT: str | Literal["dev", "prod"] = os.getenv("ENVIRONMENT", "prod")
     CLIENT_URL: str = os.getenv("CLIENT_URL", "http://localhost:8000/v1")
     OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
+    SMARTQ_API_URL: str | None = os.getenv("SMARTQ_API_URL")
+    SMARTQ_API_KEY: str | None = os.getenv("SMARTQ_API_KEY")
 
     @computed_field
     @property
