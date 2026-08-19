@@ -2,13 +2,15 @@
 
 ## Project Structure & Module Organization
 
-This Python 3.12 project creates RAG evaluation datasets from SmartQ knowledge bases and optional Wikipedia articles.
+This Python 3.12 project creates RAG evaluation datasets from SmartQ knowledge bases and optional Wikipedia articles. The installable package is `src` (the Hatch wheel configuration is `packages = ["src"]`), so imports within it must be package-relative and the console entry point is `src.main:main`.
 
 - `src/main.py` defines the Gradio workflow, source selection, and paginated SmartQ UI callbacks.
 - `src/settings.py` reads model, OpenAI-compatible, and SmartQ environment settings.
+- `src/core/generation.py` owns retrieval-context/history compression, prompt construction, and streaming answer generation.
 - `src/lib/smartq.py` is the authenticated SmartQ REST client. It lists knowledge and chunks by page, then builds complete `Article` objects for Q/A generation.
-- `src/lib/` also contains LLM/prompt code, Pydantic models, utilities, and Wikipedia retrieval.
-- `tests/` mirrors source responsibilities: application flow in `tests/test_main.py`, library tests in `tests/lib/`.
+- `src/lib/` also contains LLM/prompt code, shared Pydantic and TypedDict models, utilities, Wikipedia retrieval, embeddings/reranking, and `vectordb.py` hybrid retrieval.
+- `src/lib/models/llm.py` uses vLLM 0.27's `StructuredOutputsParams`; do not reintroduce the removed `GuidedDecodingParams` API.
+- `tests/` mirrors source responsibilities: application flow in `tests/test_main.py`, generation flow in `tests/core/`, and library tests in `tests/lib/`, including vector-store persistence and reranking behavior.
 - `dataset/` holds JSONL data; `paper/` contains Typst source and visual assets. Treat generated data and paper artifacts as deliberate changes.
 
 ## Build, Test, and Development Commands
@@ -29,15 +31,19 @@ SMARTQ_API_URL=http://localhost:8080
 SMARTQ_API_KEY=sk-...
 ```
 
-Never commit `.env`, API keys, or downloaded private knowledge content.
+Never commit `.env`, API keys, downloaded private knowledge content, or test-generated vector-store files. `KnowledgeBase(test=True)` writes its temporary persistence fixture under the system temp directory (`/tmp/rag-eval` on Linux); production instances use the repository `data/` directory.
 
 ## Coding Style & Naming Conventions
 
 Use 4-space indentation, clear type annotations, `snake_case` for functions/tests, `PascalCase` for models, and uppercase configuration names. Keep Gradio callbacks thin; put SmartQ HTTP and pagination logic in `src/lib/smartq.py`. Preserve SmartQ’s `X-API-Key` header and its `data`/`total` pagination envelope. The UI page size is 20; do not silently change it without updating tests and labels.
 
+Use package-relative imports inside `src` (for example, `from .types import Chunk` or `from ..lib.settings import settings`), not top-level `lib` or `core` imports. Keep source-article and retrieval metadata compatible with the shared `Chunk`, `Document`, and `RetrievedChunk` models. For hybrid retrieval, preserve candidate-index mapping after reranking and keep reranker scores normalized before threshold filtering.
+
 ## Testing Guidelines
 
-Use `pytest`, fixtures, parametrization, and mocks for model, network, and SmartQ API boundaries. Name tests `test_<behavior>`. Cover SmartQ page navigation, Chinese titles, chunk ordering, API errors, and missing configuration. Mock API responses; tests must not require a live SmartQ server, GPU, or external Wikipedia connection.
+Use `pytest`, fixtures, parametrization, and mocks for model, network, embedding, reranker, and SmartQ API boundaries. Name tests `test_<behavior>`. Cover SmartQ page navigation, Chinese titles, chunk ordering, API errors, missing configuration, generation prompt/context handling, and vector insert/save/load/reranking behavior.
+
+Mock API and model responses; tests must not require a live SmartQ server, GPU, external Wikipedia connection, or an actual vLLM/embedding-model initialization. Persistence tests must use `KnowledgeBase(test=True)` and must not write artifacts under the repository `data/` directory.
 
 ## Commit & Pull Request Guidelines
 
