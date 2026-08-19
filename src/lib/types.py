@@ -1,14 +1,15 @@
-import typing as t
-
 from pydantic import BaseModel, Field
 
 
-class Chunk(t.TypedDict):
+class Chunk(BaseModel):
     """Represent a section of an Article"""
 
     heading: str
     level: int
     content: str
+
+    def __getitem__(self, key: str) -> str | int:
+        return getattr(self, key)
 
 
 class Article(BaseModel):
@@ -18,7 +19,7 @@ class Article(BaseModel):
     source: str
     language: str
     chunks: list[Chunk]
-    summary: str
+    summary: str = ""
 
     def to_json(self) -> dict:
         return self.__dict__

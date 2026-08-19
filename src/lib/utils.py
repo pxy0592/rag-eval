@@ -3,7 +3,7 @@ import re
 import tempfile
 from typing import Any
 
-from lib.types import Chunk
+from .types import Chunk
 
 
 def format_context(context: list[Chunk]) -> str:
@@ -22,7 +22,7 @@ def create_json_file(data: Any, prefix: str = "data_") -> str:
         return temp_f.name
 
 
-def parse_qa_output(llm_output: str) -> tuple[str, str] | None:
+def parse_qa_output(llm_output: str | None) -> dict[str, str] | None:
     """
     Parses the LLM output string to extract the Question and Answer.
 
@@ -63,7 +63,9 @@ def parse_qa_output(llm_output: str) -> tuple[str, str] | None:
     if match:
         question = match.group(1).strip()
         answer = match.group(2).strip()
-        return question, answer
+        if not question or not answer:
+            return None
+        return {"question": question, "answer": answer}
 
     else:
         # Handle cases where the pattern wasn't found at all
