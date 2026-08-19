@@ -41,3 +41,6 @@ docstring-code-format = true
 
 [tool.ruff.lint]
 extend-select = ["E501"]  # Enforce line length rule
+
+[tool.coverage.run]
+source = ["src"]
