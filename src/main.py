@@ -3,11 +3,11 @@ from typing import Literal
 import gradio as gr
 import pandas as pd
 
-from lib.llm import generate, get_client
-from lib.prompt import PROMPT
-from lib.types import QA, Article
-from lib.utils import create_json_file, format_context
-from lib.wikipedia import get_wikipedia_article
+from .lib.llm import generate, get_client
+from .lib.prompt import PROMPT
+from .lib.types import QA, Article
+from .lib.utils import create_json_file, format_context
+from .lib.wikipedia import get_wikipedia_article
 
 # --- Constants ---
 
@@ -23,7 +23,7 @@ llm = get_client()
 def get_articles(
     source: Literal["Wikipedia"], title: str, langs: list[str]
 ) -> list[Article]:
-    articles: list[Article] | None
+    articles: list[Article] = []
 
     try:
         match source:

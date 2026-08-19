@@ -1,9 +1,9 @@
 from openai import OpenAI
 from vllm import LLM, SamplingParams
-from vllm.sampling_params import GuidedDecodingParams
+from vllm.sampling_params import StructuredOutputsParams
 
-from lib.types import QAFormat
-from settings import settings
+from .types import QAFormat
+from ..settings import settings
 
 
 def get_client() -> LLM | OpenAI:
@@ -48,7 +48,7 @@ def generate(prompt: str, llm: LLM | OpenAI, params: dict = {}) -> QAFormat:
                 frequency_penalty=frequency_penalty,
                 presence_penalty=presence_penalty,
                 repetition_penalty=repetition_penalty,
-                guided_decoding=GuidedDecodingParams(
+                structured_outputs=StructuredOutputsParams(
                     json=QAFormat.model_json_schema()
                 ),
             )
