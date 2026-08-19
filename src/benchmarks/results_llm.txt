@@ -1,0 +1,5 @@
+== Benchmark Generación LLM ==
+
+Short  | Prompts:  4 | Total: 2.0336s | Throughput:   16.72 tok/s
+Medium | Prompts:  4 | Total: 3.1692s | Throughput:   40.39 tok/s
+Long   | Prompts:  4 | Total: 3.4985s | Throughput:   97.76 tok/s

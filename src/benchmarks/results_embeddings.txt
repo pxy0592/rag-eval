@@ -1,0 +1,90 @@
+=== BATCH: 32 ===
+
+Benchmarking with 2 sentences, batch_size=32
+Dense only: 0.0261s (avg over 10 runs)
+Sparse only: 0.0263s (avg over 10 runs)
+Colbert only: 0.0264s (avg over 10 runs)
+Dense + Sparse: 0.0274s (avg over 10 runs)
+All (Dense + Sparse + Colbert): 0.0271s (avg over 10 runs)
+
+Benchmarking with 100 sentences, batch_size=32
+Dense only: 0.1618s (avg over 10 runs)
+Sparse only: 0.1764s (avg over 10 runs)
+Colbert only: 0.1666s (avg over 10 runs)
+Dense + Sparse: 0.1791s (avg over 10 runs)
+All (Dense + Sparse + Colbert): 0.1839s (avg over 10 runs)
+
+Benchmarking with 1000 sentences, batch_size=32
+Dense only: 1.5664s (avg over 10 runs)
+Sparse only: 1.7000s (avg over 10 runs)
+Colbert only: 1.6218s (avg over 10 runs)
+Dense + Sparse: 1.7259s (avg over 10 runs)
+All (Dense + Sparse + Colbert): 1.7538s (avg over 10 runs)
+
+=== BATCH: 32 + preallocating memory with numpy for dense embeddings
+
+Benchmarking with 2 sentences, batch_size=32
+Dense only: 0.0259s (avg over 10 runs)
+Sparse only: 0.0302s (avg over 10 runs)
+Colbert only: 0.0265s (avg over 10 runs)
+Dense + Sparse: 0.0268s (avg over 10 runs)
+All (Dense + Sparse + Colbert): 0.0267s (avg over 10 runs)
+
+Benchmarking with 100 sentences, batch_size=32
+Dense only: 0.1614s (avg over 10 runs)
+Sparse only: 0.1731s (avg over 10 runs)
+Colbert only: 0.1645s (avg over 10 runs)
+Dense + Sparse: 0.1752s (avg over 10 runs)
+All (Dense + Sparse + Colbert): 0.1786s (avg over 10 runs)
+
+Benchmarking with 1000 sentences, batch_size=32
+Dense only: 1.4992s (avg over 10 runs)
+Sparse only: 1.6391s (avg over 10 runs)
+Colbert only: 1.5911s (avg over 10 runs)
+Dense + Sparse: 1.6820s (avg over 10 runs)
+All (Dense + Sparse + Colbert): 1.7125s (avg over 10 runs)
+
+=== BATCH 64 + preallocating memory with numpy for dense embeddings ===
+
+Benchmarking with 2 sentences, batch_size=64
+Dense only: 0.0267s (avg over 10 runs)
+Sparse only: 0.0260s (avg over 10 runs)
+Colbert only: 0.0264s (avg over 10 runs)
+Dense + Sparse: 0.0259s (avg over 10 runs)
+All (Dense + Sparse + Colbert): 0.0264s (avg over 10 runs)
+
+Benchmarking with 100 sentences, batch_size=64
+Dense only: 0.1270s (avg over 10 runs)
+Sparse only: 0.1369s (avg over 10 runs)
+Colbert only: 0.1306s (avg over 10 runs)
+Dense + Sparse: 0.1390s (avg over 10 runs)
+All (Dense + Sparse + Colbert): 0.1418s (avg over 10 runs)
+
+Benchmarking with 1000 sentences, batch_size=64
+Dense only: 1.3109s (avg over 10 runs)
+Sparse only: 1.4262s (avg over 10 runs)
+Colbert only: 1.3845s (avg over 10 runs)
+Dense + Sparse: 1.4618s (avg over 10 runs)
+All (Dense + Sparse + Colbert): 1.4945s (avg over 10 runs)
+
+=== BATCH 256 + preallocating memory with numpy for dense embeddings ===
+
+Benchmarking with 2 sentences, batch_size=256
+Dense only: 0.0254s (avg over 10 runs)
+Sparse only: 0.0252s (avg over 10 runs)
+Colbert only: 0.0257s (avg over 10 runs)
+Dense + Sparse: 0.0266s (avg over 10 runs)
+All (Dense + Sparse + Colbert): 0.0266s (avg over 10 runs)
+
+Benchmarking with 100 sentences, batch_size=256
+Dense only: 0.1177s (avg over 10 runs)
+Sparse only: 0.1292s (avg over 10 runs)
+Colbert only: 0.1182s (avg over 10 runs)
+Dense + Sparse: 0.1285s (avg over 10 runs)
+All (Dense + Sparse + Colbert): 0.1312s (avg over 10 runs)
+
+Benchmarking with 1000 sentences, batch_size=256
+Dense only: 1.0625s (avg over 10 runs)
+Sparse only: 1.2061s (avg over 10 runs)
+Colbert only: 1.1412s (avg over 10 runs)
+Dense + Sparse: 1.2654s (avg over 10 runs)
