@@ -17,6 +17,7 @@ class Settings(BaseModel):
     TORCH_DEVICE: Literal["cuda", "cpu"] | None = None
     ENVIRONMENT: str | Literal["dev", "prod"] = os.getenv("ENVIRONMENT", "prod")
     CLIENT_URL: str = os.getenv("CLIENT_URL", "http://localhost:8000/v1")
+    OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
 
     @computed_field
     @property

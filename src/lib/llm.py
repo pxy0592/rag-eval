@@ -9,7 +9,12 @@ from ..settings import settings
 def get_client() -> LLM | OpenAI:
     match settings.ENVIRONMENT:
         case "dev":
-            model = OpenAI(api_key="API", base_url=settings.CLIENT_URL)
+            if not settings.OPENAI_API_KEY:
+                raise ValueError("OPENAI_API_KEY must be set when ENVIRONMENT=dev")
+            model = OpenAI(
+                api_key=settings.OPENAI_API_KEY,
+                base_url=settings.CLIENT_URL,
+            )
         case "prod":
             model = LLM(
                 model=settings.LLM_MODEL,

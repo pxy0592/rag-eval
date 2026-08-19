@@ -1,5 +1,9 @@
 from typing import Literal
 
+from .lib.proxy import remove_unsupported_socks_proxies
+
+remove_unsupported_socks_proxies()
+
 import gradio as gr
 import pandas as pd
 

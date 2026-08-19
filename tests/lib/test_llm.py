@@ -23,11 +23,23 @@ class FakeLLM:
 def test_get_client_dev(monkeypatch):
     monkeypatch.setattr(llm_module, "OpenAI", FakeOpenAI)
     monkeypatch.setattr(llm_module.settings, "ENVIRONMENT", "dev")
+    monkeypatch.setattr(llm_module.settings, "OPENAI_API_KEY", "test-api-key")
 
     client = llm_module.get_client()
 
     assert isinstance(client, FakeOpenAI)
-    assert client.kwargs == {"api_key": "API", "base_url": llm_module.settings.CLIENT_URL}
+    assert client.kwargs == {
+        "api_key": "test-api-key",
+        "base_url": llm_module.settings.CLIENT_URL,
+    }
+
+
+def test_get_client_dev_requires_api_key(monkeypatch):
+    monkeypatch.setattr(llm_module.settings, "ENVIRONMENT", "dev")
+    monkeypatch.setattr(llm_module.settings, "OPENAI_API_KEY", None)
+
+    with pytest.raises(ValueError, match="OPENAI_API_KEY must be set"):
+        llm_module.get_client()
 
 
 def test_get_client_prod(monkeypatch):
