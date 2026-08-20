@@ -568,6 +568,8 @@ class SmartQKnowledgeQAClient(SmartQAgentClient):
         api_url: str | None,
         api_key: str | None,
         tenant_id: str | None,
+        agent_id: str | None,
+        summary_model_id: str | None,
         knowledge_base_ids: list[str] | None = None,
         knowledge_ids: list[str] | None = None,
         timeout_seconds: int = 180,
@@ -576,9 +578,12 @@ class SmartQKnowledgeQAClient(SmartQAgentClient):
             api_url,
             api_key,
             tenant_id,
-            agent_id="knowledge-chat",
+            agent_id=agent_id,
             knowledge_base_ids=knowledge_base_ids,
             timeout_seconds=timeout_seconds,
+        )
+        self._summary_model_id = self._require_value(
+            summary_model_id, "SMARTQ_MODEL_ID"
         )
         self._knowledge_ids = [
             knowledge_id.strip()
@@ -591,11 +596,6 @@ class SmartQKnowledgeQAClient(SmartQAgentClient):
         return "knowledge"
 
     @property
-    def agent_id(self) -> str:
-        """Stable run-manifest identity for knowledge-chat evaluations."""
-        return "knowledge-chat"
-
-    @property
     def _chat_endpoint(self) -> str:
         return "knowledge-chat"
 
@@ -604,6 +604,10 @@ class SmartQKnowledgeQAClient(SmartQAgentClient):
             "query": question,
             "knowledge_base_ids": self._knowledge_base_ids,
             "knowledge_ids": self._knowledge_ids,
+            "agent_enabled": False,
+            "agent_id": self._agent_id,
+            "web_search_enabled": False,
+            "summary_model_id": self._summary_model_id,
             "disable_title": True,
             "enable_memory": False,
             "channel": "api",

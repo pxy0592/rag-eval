@@ -39,7 +39,7 @@ uv run python -m src.evals.cli run \
   --metrics all
 ```
 
-Set `SMARTQ_KNOWLEDGE_BASE_IDS` and optionally `SMARTQ_KNOWLEDGE_IDS` as comma-separated IDs. Knowledge mode does not require `SMARTQ_AGENT_ID`.
+Set `SMARTQ_AGENT_ID` to the knowledge-chat profile (for example `builtin-quick-answer`) and `SMARTQ_MODEL_ID` to the summary model (for example `builtin-llm-qwen3-32b`). Set `SMARTQ_KNOWLEDGE_BASE_IDS` and optionally `SMARTQ_KNOWLEDGE_IDS` as comma-separated IDs. Knowledge mode sends `agent_enabled=false`, `web_search_enabled=false`, and `channel=api`.
 
 Expected artifacts:
 

@@ -346,6 +346,8 @@ def test_knowledge_qa_posts_document_scope_and_parses_top_level_references(monke
         "http://smartq.example",
         "secret-key",
         "tenant-1",
+        agent_id="builtin-quick-answer",
+        summary_model_id="builtin-llm-qwen3-32b",
         knowledge_base_ids=["kb-1"],
         knowledge_ids=["knowledge-1"],
     )
@@ -359,6 +361,10 @@ def test_knowledge_qa_posts_document_scope_and_parses_top_level_references(monke
         "query": "现员多少人？",
         "knowledge_base_ids": ["kb-1"],
         "knowledge_ids": ["knowledge-1"],
+        "agent_enabled": False,
+        "agent_id": "builtin-quick-answer",
+        "web_search_enabled": False,
+        "summary_model_id": "builtin-llm-qwen3-32b",
         "disable_title": True,
         "enable_memory": False,
         "channel": "api",
@@ -372,3 +378,26 @@ def test_knowledge_qa_posts_document_scope_and_parses_top_level_references(monke
         event for event in response.events if event["response_type"] == "references"
     )
     assert references_event["data"]["references"][0]["id"] == "chunk-51"
+
+
+@pytest.mark.parametrize(
+    ("agent_id", "summary_model_id", "message"),
+    [
+        (None, "model-1", "SMARTQ_AGENT_ID"),
+        ("agent-1", None, "SMARTQ_MODEL_ID"),
+    ],
+)
+def test_knowledge_qa_requires_agent_and_summary_model_configuration(
+    agent_id, summary_model_id, message
+):
+    from src.lib.smartq import SmartQKnowledgeQAClient
+
+    with pytest.raises(SmartQAPIError, match=message):
+        SmartQKnowledgeQAClient(
+            "http://smartq.example",
+            "secret-key",
+            "tenant-1",
+            agent_id=agent_id,
+            summary_model_id=summary_model_id,
+            knowledge_base_ids=["kb-1"],
+        )

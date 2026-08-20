@@ -133,3 +133,29 @@ def test_run_command_selects_knowledge_chat_mode(tmp_path, monkeypatch):
         ]
     ) == 0
     assert selected_modes == ["knowledge"]
+
+
+def test_knowledge_mode_reuses_agent_id_and_model_id_settings(monkeypatch):
+    captured = {}
+
+    class FakeKnowledgeClient:
+        def __init__(self, *args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+
+    monkeypatch.setattr(cli, "SmartQKnowledgeQAClient", FakeKnowledgeClient)
+    monkeypatch.setattr(cli.settings, "SMARTQ_API_URL", "http://smartq.example")
+    monkeypatch.setattr(cli.settings, "SMARTQ_API_KEY", "secret-key")
+    monkeypatch.setattr(cli.settings, "SMARTQ_TENANT_ID", "tenant-1")
+    monkeypatch.setattr(cli.settings, "SMARTQ_AGENT_ID", "builtin-quick-answer")
+    monkeypatch.setattr(cli.settings, "SMARTQ_MODEL_ID", "builtin-llm-qwen3-32b")
+    monkeypatch.setattr(cli.settings, "SMARTQ_KNOWLEDGE_BASE_IDS", "kb-1")
+    monkeypatch.setattr(cli.settings, "SMARTQ_KNOWLEDGE_IDS", "knowledge-1")
+
+    client = cli._qa_client("knowledge")
+
+    assert isinstance(client, FakeKnowledgeClient)
+    assert captured["kwargs"]["agent_id"] == "builtin-quick-answer"
+    assert captured["kwargs"]["summary_model_id"] == "builtin-llm-qwen3-32b"
+    assert captured["kwargs"]["knowledge_base_ids"] == ["kb-1"]
+    assert captured["kwargs"]["knowledge_ids"] == ["knowledge-1"]

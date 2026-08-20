@@ -30,6 +30,8 @@ Copy `.env.example` to `.env`. For development-model mode, set `ENVIRONMENT=dev`
 ```dotenv
 SMARTQ_API_URL=http://localhost:8080
 SMARTQ_API_KEY=sk-...
+SMARTQ_AGENT_ID=builtin-quick-answer
+SMARTQ_MODEL_ID=builtin-llm-qwen3-32b
 ```
 
 Never commit `.env`, API keys, downloaded private knowledge content, test-generated vector-store files, or `evaluation_runs/` artifacts. `KnowledgeBase(test=True)` writes its temporary persistence fixture under the system temp directory (`/tmp/rag-eval` on Linux); production instances use the repository `data/` directory.

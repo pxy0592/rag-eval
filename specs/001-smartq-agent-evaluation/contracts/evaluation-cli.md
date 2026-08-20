@@ -15,7 +15,8 @@ The CLI reads only environment configuration; options and artifacts must never p
 | `SMARTQ_API_URL` | yes | SmartQ backend base URL, with or without `/api/v1`. |
 | `SMARTQ_API_KEY` | yes | SmartQ API key sent as `X-API-Key`. |
 | `SMARTQ_TENANT_ID` | yes | SmartQ tenant sent as `X-Tenant-ID`. |
-| `SMARTQ_AGENT_ID` | Agent mode only | Agent used with `POST /agent-chat/:session_id`. |
+| `SMARTQ_AGENT_ID` | yes | Agent/profile ID used by Agent mode and reused as `agent_id` in knowledge mode. |
+| `SMARTQ_MODEL_ID` | Knowledge mode | Summary model sent as `summary_model_id` to `POST /knowledge-chat/:session_id`. |
 | `SMARTQ_KNOWLEDGE_BASE_IDS` | no | Comma-separated KB IDs sent in `knowledge_base_ids`. |
 | `SMARTQ_KNOWLEDGE_IDS` | no | Comma-separated document IDs sent in `knowledge_ids` for knowledge mode. |
 | `SMARTQ_AGENT_TIMEOUT_SECONDS` | no | Per-question timeout; defaults to 180 seconds. |
@@ -32,7 +33,7 @@ uv run python -m src.evals.cli collect \
   --qa-mode agent
 ```
 
-Validates input before the first request, then creates `evaluation_runs/<run-id>/records.jsonl`. It makes one session and one sequential QA request for each source record. `--qa-mode agent` uses `POST /agent-chat/:session_id`; `--qa-mode knowledge` uses `POST /knowledge-chat/:session_id` and parses top-level `knowledge_references`. Exit non-zero only when setup/input prevents a run; individual request failures are recorded and summarized.
+Validates input before the first request, then creates `evaluation_runs/<run-id>/records.jsonl`. It makes one session and one sequential QA request for each source record. `--qa-mode agent` uses `POST /agent-chat/:session_id`; `--qa-mode knowledge` uses `POST /knowledge-chat/:session_id`, sends `agent_enabled=false`, `agent_id=SMARTQ_AGENT_ID`, `web_search_enabled=false`, `summary_model_id=SMARTQ_MODEL_ID`, and `channel=api`, then parses top-level `knowledge_references`. Exit non-zero only when setup/input prevents a run; individual request failures are recorded and summarized.
 
 ### `score`
 

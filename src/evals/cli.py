@@ -77,6 +77,8 @@ def _qa_client(
             settings.SMARTQ_API_URL,
             settings.SMARTQ_API_KEY,
             settings.SMARTQ_TENANT_ID,
+            agent_id=settings.SMARTQ_AGENT_ID,
+            summary_model_id=settings.SMARTQ_MODEL_ID,
             knowledge_base_ids=knowledge_base_ids,
             knowledge_ids=_configured_ids(settings.SMARTQ_KNOWLEDGE_IDS),
             timeout_seconds=settings.SMARTQ_AGENT_TIMEOUT_SECONDS,
