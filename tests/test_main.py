@@ -263,6 +263,33 @@ def test_parse_bulk_document_ids_supports_commas_newlines_and_dedup(
     ) == ["doc-1", "doc-2", "doc-3"]
 
 
+def test_parse_bulk_document_ids_accepts_checkbox_selection(main_module):
+    assert main_module.parse_smartq_document_ids(
+        ["doc-1", "doc-2", "doc-1"]
+    ) == ["doc-1", "doc-2"]
+
+
+def test_load_bulk_documents_returns_multi_select_choices(
+    main_module, monkeypatch
+):
+    client = Mock()
+    client.list_all_knowledge.return_value = [
+        SmartQKnowledge(id="doc-1", title="第一篇文档"),
+        SmartQKnowledge(id="doc-2", title="第二篇文档"),
+    ]
+    monkeypatch.setattr(main_module, "SmartQClient", Mock(return_value=client))
+
+    choices, status = main_module.load_bulk_smartq_documents("kb-1")
+
+    assert choices["choices"] == [
+        ("第一篇文档", "doc-1"),
+        ("第二篇文档", "doc-2"),
+    ]
+    assert choices["value"] == []
+    assert status == "Loaded 2 SmartQ document(s)."
+    client.list_all_knowledge.assert_called_once_with("kb-1")
+
+
 def test_random_chunk_selection_excludes_edges_and_is_non_adjacent(main_module):
     selected = main_module.select_random_non_adjacent_chunks(
         total_chunks=40,
@@ -312,7 +339,7 @@ def test_bulk_generation_uses_floor_count_one_chunk_per_pair(
     )
 
     qa_pairs, status = main_module.generate_bulk_smartq_qa(
-        "doc-1\ndoc-2",
+        ["doc-1", "doc-2"],
         5,
         client=FakeSmartQClient(),
         rng=main_module.random.Random(3),

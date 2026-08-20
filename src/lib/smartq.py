@@ -114,6 +114,26 @@ class SmartQClient:
         ]
         return SmartQKnowledgePage(items=items, **payload["pagination"])
 
+    def list_all_knowledge(
+        self, knowledge_base_id: str | None
+    ) -> list[SmartQKnowledge]:
+        """Retrieve all knowledge records using the fixed 20-item pages."""
+        page = 1
+        items: list[SmartQKnowledge] = []
+        seen: set[str] = set()
+        while True:
+            result = self.list_knowledge_page(
+                knowledge_base_id, page, self.DEFAULT_PAGE_SIZE
+            )
+            for knowledge in result.items:
+                if knowledge.id in seen:
+                    continue
+                seen.add(knowledge.id)
+                items.append(knowledge)
+            if not result.has_next:
+                return items
+            page += 1
+
     def get_chunk_page(
         self, knowledge_id: str | None, page: int = 1, page_size: int = DEFAULT_PAGE_SIZE
     ) -> SmartQChunkPage:

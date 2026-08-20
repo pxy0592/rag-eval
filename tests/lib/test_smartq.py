@@ -401,3 +401,44 @@ def test_knowledge_qa_requires_agent_and_summary_model_configuration(
             summary_model_id=summary_model_id,
             knowledge_base_ids=["kb-1"],
         )
+
+
+def test_list_all_knowledge_uses_fixed_twenty_item_pages(monkeypatch):
+    urlopen = Mock(
+        side_effect=[
+            FakeResponse(
+                {
+                    "success": True,
+                    "total": 21,
+                    "page": 1,
+                    "page_size": 20,
+                    "data": [{"id": "knowledge-1", "title": "第一篇知识"}],
+                }
+            ),
+            FakeResponse(
+                {
+                    "success": True,
+                    "total": 21,
+                    "page": 2,
+                    "page_size": 20,
+                    "data": [{"id": "knowledge-21", "title": "第二十一篇知识"}],
+                }
+            ),
+        ]
+    )
+    monkeypatch.setattr("src.lib.smartq.urlopen", urlopen)
+
+    documents = SmartQClient(
+        "http://smartq.example", "secret-key"
+    ).list_all_knowledge("kb-1")
+
+    assert [(document.id, document.title) for document in documents] == [
+        ("knowledge-1", "第一篇知识"),
+        ("knowledge-21", "第二十一篇知识"),
+    ]
+    assert urlopen.call_args_list[0].args[0].full_url.endswith(
+        "/knowledge-bases/kb-1/knowledge?page=1&page_size=20"
+    )
+    assert urlopen.call_args_list[1].args[0].full_url.endswith(
+        "/knowledge-bases/kb-1/knowledge?page=2&page_size=20"
+    )

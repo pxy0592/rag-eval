@@ -42,7 +42,7 @@ Use 4-space indentation, clear type annotations, `snake_case` for functions/test
 
 Use package-relative imports inside `src` (for example, `from .types import Chunk` or `from ..lib.settings import settings`), not top-level `lib` or `core` imports. Keep source-article and retrieval metadata compatible with the shared `Chunk`, `Document`, and `RetrievedChunk` models. For hybrid retrieval, preserve candidate-index mapping after reranking and keep reranker scores normalized before threshold filtering.
 
-Bulk SmartQ Q/A generation divides the requested total evenly with integer division, uses one chunk per pair, excludes the first and last 10 chunks, and must select non-adjacent chunk indexes. Preserve these sampling rules and JSONL output semantics when changing the UI or generation flow.
+Bulk SmartQ Q/A generation lists all documents from an entered knowledge-base ID using internal 20-item pagination, supports multi-selection, divides the requested total evenly with integer division, uses one chunk per pair, excludes the first and last 10 chunks, and must select non-adjacent chunk indexes. Preserve these selection, sampling, and JSONL output rules when changing the UI or generation flow.
 
 ## Testing Guidelines
 

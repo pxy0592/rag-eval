@@ -60,11 +60,12 @@ Each question type is designed to stress different aspects of retrieval and gene
 
 The Gradio **Generate Q/A** tab can create a downloadable JSONL dataset from multiple SmartQ document IDs in one operation:
 
-1. Enter document IDs separated by commas or new lines.
-2. Set the requested total number of Q/A pairs.
-3. The app generates `floor(total / document_count)` pairs per document.
-4. For each document, the first and last 10 chunks are excluded, then non-adjacent chunks are selected randomly.
-5. Each selected chunk produces exactly one factual Q/A pair, and all pairs are written to one UTF-8 JSONL download.
+1. Enter a SmartQ knowledge base ID and load its document list.
+2. Select multiple documents from the list.
+3. Set the requested total number of Q/A pairs.
+4. The app generates `floor(total / document_count)` pairs per document.
+5. For each document, the first and last 10 chunks are excluded, then non-adjacent chunks are selected randomly.
+6. Each selected chunk produces exactly one factual Q/A pair, and all pairs are written to one UTF-8 JSONL download.
 
 If integer division leaves a remainder, the UI reports how many requested pairs were not allocated. Documents that cannot supply the required number of non-adjacent interior chunks produce a clear validation error.
 

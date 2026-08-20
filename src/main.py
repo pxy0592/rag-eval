@@ -154,6 +154,20 @@ def fetch_smartq_article(knowledge_id: str | None):
     return ([article], knowledge_id, *chunk_updates)
 
 
+def load_bulk_smartq_documents(knowledge_base_id: str | None):
+    """Load every document in a knowledge base for bulk multi-selection."""
+    try:
+        client = SmartQClient(settings.SMARTQ_API_URL, settings.SMARTQ_API_KEY)
+        documents = client.list_all_knowledge(knowledge_base_id)
+    except SmartQAPIError as error:
+        raise gr.Error(str(error)) from error
+    choices = [(document.title, document.id) for document in documents]
+    return (
+        gr.update(choices=choices, value=[]),
+        f"Loaded {len(documents)} SmartQ document(s).",
+    )
+
+
 def update_source_controls(source: str):
     """Show the controls appropriate to the selected article source."""
 
@@ -255,13 +269,15 @@ def generate_syntetic_qa_pair(
         raise gr.Error(f"Error to generate {error}") from error
 
 
-def parse_smartq_document_ids(raw_ids: str) -> list[str]:
-    """Parse comma/newline-separated SmartQ document IDs without duplicates."""
-    document_ids = [
-        value.strip()
-        for value in re.split(r"[,\n\r]+", raw_ids or "")
-        if value.strip()
-    ]
+def parse_smartq_document_ids(
+    raw_ids: str | list[str] | None,
+) -> list[str]:
+    """Normalize selected or comma/newline-separated SmartQ document IDs."""
+    if isinstance(raw_ids, list):
+        values = raw_ids
+    else:
+        values = re.split(r"[,\n\r]+", raw_ids or "")
+    document_ids = [value.strip() for value in values if value.strip()]
     return list(dict.fromkeys(document_ids))
 
 
@@ -294,7 +310,7 @@ def select_random_non_adjacent_chunks(
 
 
 def generate_bulk_smartq_qa(
-    raw_document_ids: str,
+    raw_document_ids: str | list[str] | None,
     total_qa_count: int | float,
     type_q: Literal["factual", "multihop"] = "factual",
     *,
@@ -358,7 +374,7 @@ def generate_bulk_smartq_qa(
 
 
 def generate_bulk_smartq_qa_file(
-    raw_document_ids: str,
+    raw_document_ids: str | list[str] | None,
     total_qa_count: int | float,
     type_q: Literal["factual", "multihop"],
 ):
@@ -599,15 +615,26 @@ def build_qa_tab(articles_state: gr.State, qa_data_state: gr.State) -> None:
             "One-click SmartQ bulk generation", open=False
         ):
             gr.Markdown(
-                "Enter multiple SmartQ document IDs separated by commas or new "
-                "lines. The requested total is divided evenly using integer "
+                "Enter a SmartQ knowledge base ID, load its document list, and "
+                "select multiple documents. The requested total is divided "
+                "evenly using integer "
                 "division. Each Q/A uses one randomly selected, non-adjacent "
                 "chunk after excluding the first and last 10 chunks."
             )
-            bulk_document_ids = gr.Textbox(
-                label="SmartQ document IDs",
-                placeholder="document-id-1\ndocument-id-2",
-                lines=4,
+            bulk_knowledge_base_id = gr.Textbox(
+                label="SmartQ knowledge base ID",
+                placeholder="knowledge-base-id",
+            )
+            bulk_list_documents_button = gr.Button(
+                "List SmartQ documents"
+            )
+            bulk_document_ids = gr.CheckboxGroup(
+                label="Select SmartQ documents",
+                choices=[],
+                interactive=True,
+            )
+            bulk_documents_status = gr.Markdown(
+                "Enter a knowledge base ID to list documents."
             )
             bulk_total = gr.Number(
                 value=10,
@@ -621,6 +648,11 @@ def build_qa_tab(articles_state: gr.State, qa_data_state: gr.State) -> None:
             bulk_status = gr.Markdown()
             bulk_file = gr.File(
                 label="Download generated Q/A JSONL", file_count="single"
+            )
+            bulk_list_documents_button.click(
+                load_bulk_smartq_documents,
+                inputs=[bulk_knowledge_base_id],
+                outputs=[bulk_document_ids, bulk_documents_status],
             )
             bulk_generate_button.click(
                 generate_bulk_smartq_qa_file,
