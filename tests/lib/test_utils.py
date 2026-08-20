@@ -106,3 +106,20 @@ def test_labels_with_only_whitespace_returns_none():
     """Ensures that labels followed only by whitespace results in None."""
     input_str = "Question: \t \n Answer:     "
     assert parse_qa_output(input_str) is None
+
+
+def test_create_jsonl_file_writes_one_json_object_per_line(tmp_path):
+    import json
+    from pathlib import Path
+
+    from src.lib.utils import create_jsonl_file
+
+    path = Path(create_jsonl_file([{"question": "问题一"}, {"question": "问题二"}]))
+    try:
+        assert path.suffix == ".jsonl"
+        assert [json.loads(line) for line in path.read_text().splitlines()] == [
+            {"question": "问题一"},
+            {"question": "问题二"},
+        ]
+    finally:
+        path.unlink(missing_ok=True)

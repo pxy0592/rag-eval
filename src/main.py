@@ -1,3 +1,4 @@
+import random
 import re
 from typing import Literal
 
@@ -17,7 +18,12 @@ from .lib.smartq import (
     SmartQKnowledgePage,
 )
 from .lib.types import QA, QAFormat, Article, Chunk
-from .lib.utils import create_json_file, format_context, parse_qa_output
+from .lib.utils import (
+    create_json_file,
+    create_jsonl_file,
+    format_context,
+    parse_qa_output,
+)
 from .lib.wikipedia import get_wikipedia_article
 from .settings import settings
 
@@ -199,28 +205,40 @@ def expand_factual_answer(
     return QAFormat(question=qa_pair.question, answer=rewritten.answer)
 
 
+def create_synthetic_qa_pair(
+    type_q: Literal["factual", "multihop"],
+    article: Article,
+    chunks_idx: list[int],
+) -> QAFormat:
+    """Generate or refine one structured Q/A pair from selected chunks."""
+    if not chunks_idx:
+        raise ValueError("Select at least one context chunk")
+    chunks = [article.chunks[chunk_idx] for chunk_idx in chunks_idx]
+    qa_pair = qa_pair_from_chunks(chunks)
+    context = format_context(chunks)
+    if qa_pair is None:
+        match type_q:
+            case "factual":
+                prompt = PROMPT["factual_qa_pair"].format(
+                    article_title=article.title,
+                    context=context,
+                )
+            case _:
+                raise ValueError(f"Unsupported question type: {type_q}")
+        qa_pair = generate(prompt=prompt, llm=llm)
+    if type_q == "factual":
+        qa_pair = expand_factual_answer(qa_pair, article, context)
+    return qa_pair
+
+
 def generate_syntetic_qa_pair(
     type_q: Literal["factual", "multihop"],
     article: Article,
     chunks_idx: list[int],
 ):
-    chunks = [article.chunks[chunk_idx] for chunk_idx in chunks_idx]
-    qa_pair = qa_pair_from_chunks(chunks)
-
+    """Gradio callback for manually generating one Q/A pair."""
     try:
-        context = format_context(chunks)
-        if qa_pair is None:
-            match type_q:
-                case "factual":
-                    prompt = PROMPT["factual_qa_pair"].format(
-                        article_title=article.title,
-                        context=context,
-                    )
-                case _:
-                    raise ValueError(f"Unsupported question type: {type_q}")
-            qa_pair = generate(prompt=prompt, llm=llm)
-        if type_q == "factual":
-            qa_pair = expand_factual_answer(qa_pair, article, context)
+        qa_pair = create_synthetic_qa_pair(type_q, article, chunks_idx)
         return (
             gr.update(
                 value=qa_pair.question,
@@ -233,8 +251,128 @@ def generate_syntetic_qa_pair(
                 interactive=True,
             ),
         )
-    except Exception as e:
-        raise gr.Error(f"Error to generate {e}")
+    except Exception as error:
+        raise gr.Error(f"Error to generate {error}") from error
+
+
+def parse_smartq_document_ids(raw_ids: str) -> list[str]:
+    """Parse comma/newline-separated SmartQ document IDs without duplicates."""
+    document_ids = [
+        value.strip()
+        for value in re.split(r"[,\n\r]+", raw_ids or "")
+        if value.strip()
+    ]
+    return list(dict.fromkeys(document_ids))
+
+
+def select_random_non_adjacent_chunks(
+    total_chunks: int,
+    count: int,
+    rng: random.Random | None = None,
+) -> list[int]:
+    """Choose random non-adjacent indexes after excluding ten at each end."""
+    if count < 1:
+        raise ValueError("Q/A count per document must be at least 1")
+    candidate_count = max(0, total_chunks - 20)
+    max_non_adjacent = (candidate_count + 1) // 2
+    if count > max_non_adjacent:
+        raise ValueError(
+            f"Document has {total_chunks} chunks; after excluding the "
+            "first and "
+            f"last 10 chunks, at most {max_non_adjacent} non-adjacent chunks "
+            f"can be selected, but {count} were requested"
+        )
+
+    generator = rng or random.Random()
+    compressed_positions = sorted(
+        generator.sample(range(candidate_count - count + 1), count)
+    )
+    return [
+        10 + compressed_position + offset
+        for offset, compressed_position in enumerate(compressed_positions)
+    ]
+
+
+def generate_bulk_smartq_qa(
+    raw_document_ids: str,
+    total_qa_count: int | float,
+    type_q: Literal["factual", "multihop"] = "factual",
+    *,
+    client: SmartQClient | None = None,
+    rng: random.Random | None = None,
+) -> tuple[list[QA], str]:
+    """Generate floor(total/documents) one-chunk Q/A pairs per document."""
+    document_ids = parse_smartq_document_ids(raw_document_ids)
+    if not document_ids:
+        raise ValueError("Enter at least one SmartQ document ID")
+    if (
+        isinstance(total_qa_count, bool)
+        or int(total_qa_count) != total_qa_count
+    ):
+        raise ValueError("Total Q/A count must be an integer")
+    requested_total = int(total_qa_count)
+    if requested_total < 1:
+        raise ValueError("Total Q/A count must be at least 1")
+
+    per_document = requested_total // len(document_ids)
+    if per_document < 1:
+        raise ValueError(
+            "Total Q/A count must be at least the number of document IDs"
+        )
+
+    smartq_client = client or SmartQClient(
+        settings.SMARTQ_API_URL, settings.SMARTQ_API_KEY
+    )
+    generator = rng or random.Random()
+    qa_pairs: list[QA] = []
+    for document_id in document_ids:
+        article = smartq_client.get_article(document_id)
+        selected_indices = select_random_non_adjacent_chunks(
+            len(article.chunks), per_document, generator
+        )
+        for chunk_index in selected_indices:
+            qa_pair = create_synthetic_qa_pair(type_q, article, [chunk_index])
+            qa_pairs.append(
+                QA(
+                    type=type_q,
+                    language=article.language,
+                    article_title=article.title,
+                    chunks=[chunk_index],
+                    question=qa_pair.question,
+                    answer=qa_pair.answer,
+                )
+            )
+
+    generated_total = len(qa_pairs)
+    remainder = requested_total - generated_total
+    status = (
+        f"Generated {generated_total} Q/A pairs from {len(document_ids)} "
+        f"documents ({per_document} per document)."
+    )
+    if remainder:
+        status += (
+            f" Requested total {requested_total} leaves a remainder of "
+            f"{remainder} after integer division."
+        )
+    return qa_pairs, status
+
+
+def generate_bulk_smartq_qa_file(
+    raw_document_ids: str,
+    total_qa_count: int | float,
+    type_q: Literal["factual", "multihop"],
+):
+    """Gradio callback that generates bulk Q/A pairs and a JSONL download."""
+    try:
+        qa_pairs, status = generate_bulk_smartq_qa(
+            raw_document_ids, total_qa_count, type_q
+        )
+        file_path = create_jsonl_file(
+            [qa.to_json() for qa in qa_pairs], prefix="smartq_qa_bulk_"
+        )
+        return qa_pairs, file_path, status
+    except (SmartQAPIError, ValueError) as error:
+        raise gr.Error(str(error)) from error
 
 
 def dataset_source_name(article_data: list[dict], qa_data: list[dict] | None = None) -> str:
@@ -455,6 +593,39 @@ def build_qa_tab(articles_state: gr.State, qa_data_state: gr.State) -> None:
             )
             qa_counter = gr.Number(
                 1, label="Q/A count", minimum=1, scale=1, interactive=True
+            )
+
+        with gr.Accordion(
+            "One-click SmartQ bulk generation", open=False
+        ):
+            gr.Markdown(
+                "Enter multiple SmartQ document IDs separated by commas or new "
+                "lines. The requested total is divided evenly using integer "
+                "division. Each Q/A uses one randomly selected, non-adjacent "
+                "chunk after excluding the first and last 10 chunks."
+            )
+            bulk_document_ids = gr.Textbox(
+                label="SmartQ document IDs",
+                placeholder="document-id-1\ndocument-id-2",
+                lines=4,
+            )
+            bulk_total = gr.Number(
+                value=10,
+                label="Total Q/A pairs",
+                minimum=1,
+                precision=0,
+            )
+            bulk_generate_button = gr.Button(
+                "Generate Q/A JSONL", variant="primary"
+            )
+            bulk_status = gr.Markdown()
+            bulk_file = gr.File(
+                label="Download generated Q/A JSONL", file_count="single"
+            )
+            bulk_generate_button.click(
+                generate_bulk_smartq_qa_file,
+                inputs=[bulk_document_ids, bulk_total, type_q],
+                outputs=[qa_data_state, bulk_file, bulk_status],
             )
 
         gr.Markdown("### Generate Questions per Article")

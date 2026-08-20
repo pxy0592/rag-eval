@@ -56,6 +56,18 @@ Each dataset entry belongs to one of several **cognitive and reasoning categorie
 
 Each question type is designed to stress different aspects of retrieval and generation in RAG systems.
 
+## ⚡ One-Click SmartQ Bulk Q/A Generation
+
+The Gradio **Generate Q/A** tab can create a downloadable JSONL dataset from multiple SmartQ document IDs in one operation:
+
+1. Enter document IDs separated by commas or new lines.
+2. Set the requested total number of Q/A pairs.
+3. The app generates `floor(total / document_count)` pairs per document.
+4. For each document, the first and last 10 chunks are excluded, then non-adjacent chunks are selected randomly.
+5. Each selected chunk produces exactly one factual Q/A pair, and all pairs are written to one UTF-8 JSONL download.
+
+If integer division leaves a remainder, the UI reports how many requested pairs were not allocated. Documents that cannot supply the required number of non-adjacent interior chunks produce a clear validation error.
+
 ## 📊 Evaluation Metrics
 
 Although SmartQ Dataset Creator only generates datasets, it is designed around **RAG evaluation metrics** (see [Key Metrics and Evaluation Methods for RAG](https://www.youtube.com/watch?v=cRz0BWkuwHg)).

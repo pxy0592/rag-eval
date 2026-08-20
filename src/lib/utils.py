@@ -22,6 +22,20 @@ def create_json_file(data: Any, prefix: str = "data_") -> str:
         return temp_f.name
 
 
+def create_jsonl_file(data: list[dict], prefix: str = "data_") -> str:
+    """Write one UTF-8 JSON object per line to a temporary JSONL file."""
+    with tempfile.NamedTemporaryFile(
+        mode="w+",
+        suffix=".jsonl",
+        prefix=prefix,
+        delete=False,
+        encoding="utf-8",
+    ) as temp_f:
+        for record in data:
+            temp_f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        return temp_f.name
+
+
 def parse_qa_output(llm_output: str | None) -> dict[str, str] | None:
     """Normalize JSON or labeled question-and-answer model output."""
 

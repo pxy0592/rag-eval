@@ -253,3 +253,91 @@ def test_ui_builders_and_launch(main_module, monkeypatch):
     monkeypatch.setattr(main_module.gr.Blocks, "launch", launch)
     main_module.launch()
     launch.assert_called_once()
+
+
+def test_parse_bulk_document_ids_supports_commas_newlines_and_dedup(
+    main_module,
+):
+    assert main_module.parse_smartq_document_ids(
+        "doc-1, doc-2\ndoc-1\r\ndoc-3"
+    ) == ["doc-1", "doc-2", "doc-3"]
+
+
+def test_random_chunk_selection_excludes_edges_and_is_non_adjacent(main_module):
+    selected = main_module.select_random_non_adjacent_chunks(
+        total_chunks=40,
+        count=6,
+        rng=main_module.random.Random(7),
+    )
+
+    assert len(selected) == 6
+    assert all(10 <= index < 30 for index in selected)
+    assert all(right - left > 1 for left, right in zip(selected, selected[1:]))
+
+
+def test_random_chunk_selection_rejects_impossible_count(main_module):
+    with pytest.raises(ValueError, match="at most 3 non-adjacent chunks"):
+        main_module.select_random_non_adjacent_chunks(
+            total_chunks=25,
+            count=4,
+            rng=main_module.random.Random(1),
+        )
+
+
+def test_bulk_generation_uses_floor_count_one_chunk_per_pair(
+    main_module, monkeypatch
+):
+    def article(title):
+        return Article(
+            title=title,
+            source=f"http://smartq/api/v1/knowledge/{title}",
+            language="cn",
+            chunks=[
+                Chunk(heading=f"分块 {index + 1}", level=1, content=f"内容 {index}")
+                for index in range(40)
+            ],
+        )
+
+    class FakeSmartQClient:
+        def get_article(self, document_id):
+            return article(document_id)
+
+    monkeypatch.setattr(
+        main_module,
+        "create_synthetic_qa_pair",
+        lambda type_q, article, chunks_idx: SimpleNamespace(
+            question=f"{article.title} question {chunks_idx[0]}",
+            answer=f"{article.title} answer {chunks_idx[0]}",
+        ),
+    )
+
+    qa_pairs, status = main_module.generate_bulk_smartq_qa(
+        "doc-1\ndoc-2",
+        5,
+        client=FakeSmartQClient(),
+        rng=main_module.random.Random(3),
+    )
+
+    assert len(qa_pairs) == 4
+    assert status == (
+        "Generated 4 Q/A pairs from 2 documents (2 per document). "
+        "Requested total 5 leaves a remainder of 1 after integer division."
+    )
+    assert {qa.article_title for qa in qa_pairs} == {"doc-1", "doc-2"}
+    for title in ("doc-1", "doc-2"):
+        indexes = [
+            qa.chunks[0] for qa in qa_pairs if qa.article_title == title
+        ]
+        assert len(indexes) == 2
+        assert all(10 <= index < 30 for index in indexes)
+        assert abs(indexes[0] - indexes[1]) > 1
+        assert all(len(qa.chunks) == 1 for qa in qa_pairs)
+
+
+def test_bulk_generation_requires_total_at_least_document_count(main_module):
+    with pytest.raises(ValueError, match="at least the number of document IDs"):
+        main_module.generate_bulk_smartq_qa(
+            "doc-1,doc-2",
+            1,
+            client=Mock(),
+        )

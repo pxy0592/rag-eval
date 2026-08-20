@@ -4,7 +4,7 @@
 
 This Python 3.12 project creates RAG evaluation datasets from SmartQ knowledge bases and optional Wikipedia articles. The installable package is `src` (the Hatch wheel configuration is `packages = ["src"]`), so imports within it must be package-relative and the console entry point is `src.main:main`.
 
-- `src/main.py` defines the Gradio workflow, source selection, and paginated SmartQ UI callbacks.
+- `src/main.py` defines the Gradio workflow, source selection, paginated SmartQ UI callbacks, and one-click multi-document Q/A JSONL generation.
 - `src/settings.py` reads model, OpenAI-compatible, and SmartQ environment settings.
 - `src/core/generation.py` owns retrieval-context/history compression, prompt construction, and streaming answer generation.
 - `src/lib/smartq.py` is the authenticated SmartQ REST client. It lists knowledge and chunks by page, then builds complete `Article` objects for Q/A generation.
@@ -41,6 +41,8 @@ Never commit `.env`, API keys, downloaded private knowledge content, test-genera
 Use 4-space indentation, clear type annotations, `snake_case` for functions/tests, `PascalCase` for models, and uppercase configuration names. Keep Gradio callbacks thin; put SmartQ HTTP and pagination logic in `src/lib/smartq.py`. Preserve SmartQ’s `X-API-Key` header and its `data`/`total` pagination envelope. The UI page size is 20; do not silently change it without updating tests and labels.
 
 Use package-relative imports inside `src` (for example, `from .types import Chunk` or `from ..lib.settings import settings`), not top-level `lib` or `core` imports. Keep source-article and retrieval metadata compatible with the shared `Chunk`, `Document`, and `RetrievedChunk` models. For hybrid retrieval, preserve candidate-index mapping after reranking and keep reranker scores normalized before threshold filtering.
+
+Bulk SmartQ Q/A generation divides the requested total evenly with integer division, uses one chunk per pair, excludes the first and last 10 chunks, and must select non-adjacent chunk indexes. Preserve these sampling rules and JSONL output semantics when changing the UI or generation flow.
 
 ## Testing Guidelines
 
