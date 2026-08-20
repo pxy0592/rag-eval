@@ -10,10 +10,12 @@
 
 2. Copy `.env.example` to `.env` and set the SmartQ values required by the [CLI contract](contracts/evaluation-cli.md). Use the backend service URL, not the documentation or UI URL.
 
-3. Confirm the validation set is available:
+3. Confirm a JSON-array or JSONL validation set is available:
 
    ```bash
    test -f dataset/smartq_qa_1.json
+   # or
+   test -f dataset/smartq_qa_50.jsonl
    ```
 
 ## Run a complete evaluation
@@ -40,6 +42,19 @@ uv run python -m src.evals.cli run \
 ```
 
 Set `SMARTQ_AGENT_ID` to the knowledge-chat profile (for example `builtin-quick-answer`) and `SMARTQ_MODEL_ID` to the summary model (for example `builtin-llm-qwen3-32b`). Set `SMARTQ_KNOWLEDGE_BASE_IDS` and optionally `SMARTQ_KNOWLEDGE_IDS` as comma-separated IDs. Knowledge mode sends `agent_enabled=false`, `web_search_enabled=false`, and `channel=api`.
+
+
+JSONL input is also accepted directly:
+
+```bash
+uv run python -m src.evals.cli run \
+  --dataset dataset/smartq_qa_50.jsonl \
+  --run-id smartq-jsonl-evaluation \
+  --qa-mode knowledge \
+  --metrics all
+```
+
+Each non-empty JSONL line must contain one complete validation-record JSON object.
 
 Expected artifacts:
 

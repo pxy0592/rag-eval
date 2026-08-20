@@ -214,3 +214,85 @@ def test_saved_tool_results_backfill_chunk_uuid_index_mapping(tmp_path):
     assert loaded[0].retrieved_chunks[0].chunk_id == "target-id"
     assert loaded[0].retrieved_chunks[0].cited_in_answer is True
     assert score.metrics[0].value == 1.0
+
+
+def test_load_validation_records_supports_jsonl_with_blank_lines(tmp_path):
+    dataset = tmp_path / "validation.jsonl"
+    dataset.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "factual",
+                        "language": "cn",
+                        "article_title": "knowledge.doc",
+                        "chunks": [51],
+                        "question": "问题一？",
+                        "answer": "答案一。",
+                    },
+                    ensure_ascii=False,
+                ),
+                "",
+                json.dumps(
+                    {
+                        "type": "factual",
+                        "language": "cn",
+                        "article_title": "knowledge.doc",
+                        "chunks": [52],
+                        "question": "问题二？",
+                        "answer": "答案二。",
+                    },
+                    ensure_ascii=False,
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    records = load_validation_records(dataset)
+
+    assert [record.record_index for record in records] == [0, 1]
+    assert [record.question for record in records] == ["问题一？", "问题二？"]
+    assert [record.expected_chunk_indices for record in records] == [[51], [52]]
+
+
+def test_load_validation_records_reports_invalid_jsonl_line(tmp_path):
+    dataset = tmp_path / "validation.jsonl"
+    dataset.write_text(
+        '{"type":"factual"}\nnot-json\n', encoding="utf-8"
+    )
+
+    with pytest.raises(EvaluationError, match="invalid JSONL at line 2"):
+        load_validation_records(dataset)
+
+
+def test_load_validation_records_requires_json_object_per_jsonl_line(tmp_path):
+    dataset = tmp_path / "validation.jsonl"
+    dataset.write_text('["not", "an", "object"]\n', encoding="utf-8")
+
+    with pytest.raises(
+        EvaluationError, match="JSONL line 1 must be a JSON object"
+    ):
+        load_validation_records(dataset)
+
+
+def test_load_validation_records_reports_jsonl_schema_line(tmp_path):
+    dataset = tmp_path / "validation.jsonl"
+    dataset.write_text(
+        "\n"
+        + json.dumps(
+            {
+                "type": "factual",
+                "language": "cn",
+                "article_title": "knowledge.doc",
+                "chunks": [51],
+                "question": "缺少答案？",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(EvaluationError, match="JSONL line 2 is invalid"):
+        load_validation_records(dataset)

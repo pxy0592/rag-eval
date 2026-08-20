@@ -69,6 +69,10 @@ The Gradio **Generate Q/A** tab can create a downloadable JSONL dataset from mul
 
 If integer division leaves a remainder, the UI reports how many requested pairs were not allocated. Documents that cannot supply the required number of non-adjacent interior chunks produce a clear validation error.
 
+## 🧾 Evaluation Dataset Formats
+
+The evaluation CLI accepts both JSON-array files and UTF-8 JSONL files through `--dataset`. JSONL files must contain one complete Q/A validation object per non-empty line, so bulk downloads such as `dataset/smartq_qa_50.jsonl` can be evaluated directly.
+
 ## 📊 Evaluation Metrics
 
 Although SmartQ Dataset Creator only generates datasets, it is designed around **RAG evaluation metrics** (see [Key Metrics and Evaluation Methods for RAG](https://www.youtube.com/watch?v=cRz0BWkuwHg)).

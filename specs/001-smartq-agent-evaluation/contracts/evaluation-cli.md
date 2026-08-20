@@ -33,7 +33,7 @@ uv run python -m src.evals.cli collect \
   --qa-mode agent
 ```
 
-Validates input before the first request, then creates `evaluation_runs/<run-id>/records.jsonl`. It makes one session and one sequential QA request for each source record. `--qa-mode agent` uses `POST /agent-chat/:session_id`; `--qa-mode knowledge` uses `POST /knowledge-chat/:session_id`, sends `agent_enabled=false`, `agent_id=SMARTQ_AGENT_ID`, `web_search_enabled=false`, `summary_model_id=SMARTQ_MODEL_ID`, and `channel=api`, then parses top-level `knowledge_references`. Exit non-zero only when setup/input prevents a run; individual request failures are recorded and summarized.
+Accepts either a non-empty JSON array (`.json`) or one validation-record object per non-empty line (`.jsonl`). It validates the complete input before the first request, then creates `evaluation_runs/<run-id>/records.jsonl`. It makes one session and one sequential QA request for each source record. `--qa-mode agent` uses `POST /agent-chat/:session_id`; `--qa-mode knowledge` uses `POST /knowledge-chat/:session_id`, sends `agent_enabled=false`, `agent_id=SMARTQ_AGENT_ID`, `web_search_enabled=false`, `summary_model_id=SMARTQ_MODEL_ID`, and `channel=api`, then parses top-level `knowledge_references`. Exit non-zero only when setup/input prevents a run; individual request failures are recorded and summarized.
 
 ### `score`
 

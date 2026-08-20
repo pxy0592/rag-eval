@@ -159,3 +159,38 @@ def test_knowledge_mode_reuses_agent_id_and_model_id_settings(monkeypatch):
     assert captured["kwargs"]["summary_model_id"] == "builtin-llm-qwen3-32b"
     assert captured["kwargs"]["knowledge_base_ids"] == ["kb-1"]
     assert captured["kwargs"]["knowledge_ids"] == ["knowledge-1"]
+
+
+def test_run_command_accepts_jsonl_validation_dataset(tmp_path, monkeypatch):
+    dataset = tmp_path / "validation.jsonl"
+    dataset.write_text(
+        json.dumps(
+            {
+                "type": "factual",
+                "language": "cn",
+                "article_title": "knowledge.doc",
+                "chunks": [51],
+                "question": "question",
+                "answer": "4041人",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cli, "_qa_client", lambda qa_mode: SuccessfulFakeAgent())
+
+    assert cli.main(
+        [
+            "run",
+            "--dataset",
+            str(dataset),
+            "--run-id",
+            "jsonl-run",
+            "--output-dir",
+            str(tmp_path / "runs"),
+            "--metrics",
+            "precision@1",
+        ]
+    ) == 0
+    assert (tmp_path / "runs" / "jsonl-run" / "records.jsonl").is_file()

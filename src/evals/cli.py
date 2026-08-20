@@ -31,7 +31,12 @@ def _parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     def collection_arguments(command: argparse.ArgumentParser) -> None:
-        command.add_argument("--dataset", type=Path, required=True)
+        command.add_argument(
+            "--dataset",
+            type=Path,
+            required=True,
+            help="Validation dataset in JSON-array or JSONL format.",
+        )
         command.add_argument("--run-id")
         command.add_argument("--output-dir", type=Path, default=Path("evaluation_runs"))
         command.add_argument(

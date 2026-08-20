@@ -58,25 +58,78 @@ class AgentClient(Protocol):
         """Send one question and return its terminal QA response."""
 
 
-def load_validation_records(path: Path) -> list[ValidationRecord]:
-    """Validate and load a JSON-array Q/A validation set before any network call."""
-    try:
-        raw_data = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as error:
-        raise EvaluationError(f"validation dataset does not exist: {path}") from error
-    except json.JSONDecodeError as error:
-        raise EvaluationError(f"validation dataset is not valid JSON: {error}") from error
-    if not isinstance(raw_data, list) or not raw_data:
-        raise EvaluationError("validation dataset must be a non-empty JSON array")
+def _load_jsonl_records(text: str) -> list[tuple[str, dict]]:
+    """Load non-empty JSON objects from a UTF-8 JSONL validation file."""
+    records: list[tuple[str, dict]] = []
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise EvaluationError(
+                f"validation dataset has invalid JSONL at line "
+                f"{line_number}: {error}"
+            ) from error
+        if not isinstance(record, dict):
+            raise EvaluationError(
+                f"validation dataset JSONL line {line_number} must be a "
+                "JSON object"
+            )
+        records.append((f"JSONL line {line_number}", record))
+    if not records:
+        raise EvaluationError(
+            "validation dataset must contain at least one JSONL record"
+        )
+    return records
 
-    records: list[ValidationRecord] = []
+
+def _load_json_array_records(text: str) -> list[tuple[str, dict]]:
+    """Load the original JSON-array validation file format."""
+    try:
+        raw_data = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise EvaluationError(
+            f"validation dataset is not valid JSON: {error}"
+        ) from error
+    if not isinstance(raw_data, list) or not raw_data:
+        raise EvaluationError(
+            "validation dataset must be a non-empty JSON array"
+        )
+    records: list[tuple[str, dict]] = []
     for index, raw_record in enumerate(raw_data):
         if not isinstance(raw_record, dict):
-            raise EvaluationError(f"validation record {index} must be a JSON object")
+            raise EvaluationError(
+                f"validation record {index} must be a JSON object"
+            )
+        records.append((f"validation record {index}", raw_record))
+    return records
+
+
+def load_validation_records(path: Path) -> list[ValidationRecord]:
+    """Validate and load a JSON array or JSONL Q/A validation dataset."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError as error:
+        raise EvaluationError(
+            f"validation dataset does not exist: {path}"
+        ) from error
+    except (OSError, UnicodeDecodeError) as error:
+        raise EvaluationError(
+            f"validation dataset cannot be read as UTF-8: {path}"
+        ) from error
+
+    raw_records = (
+        _load_jsonl_records(text)
+        if path.suffix.casefold() == ".jsonl"
+        else _load_json_array_records(text)
+    )
+    records: list[ValidationRecord] = []
+    for index, (location, raw_record) in enumerate(raw_records):
         try:
             records.append(ValidationRecord(record_index=index, **raw_record))
         except ValueError as error:
-            raise EvaluationError(f"validation record {index} is invalid: {error}") from error
+            raise EvaluationError(f"{location} is invalid: {error}") from error
     return records
 
 
