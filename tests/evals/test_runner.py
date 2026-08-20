@@ -130,6 +130,7 @@ def test_scoring_tracks_retrieval_and_generation_eligibility():
     assert summaries["answer_exact_match"].value == 0.5
     assert summaries["answer_exact_match"].scored_count == 2
     assert summaries["answer_character_f1"].value == 0.5
+    assert score.retrieval_index_tolerance == 5
     assert score.failed_count == 1
 
 
@@ -169,6 +170,7 @@ def test_report_includes_metrics_coverage_and_unscorable_diagnostics(tmp_path):
     assert "| precision@1 | 1.000000 | 1 | 2 |" in report
     assert "- Selected metrics: precision@1, answer_exact_match" in report
     assert "- Report generated:" in report
+    assert "- Retrieval chunk-index tolerance: ±5" in report
     assert "Retrieval evidence unavailable" in report
     assert "Expected chunk indices: [51]" in report
     assert "Ground-truth chunk mappings: Not observed" in report

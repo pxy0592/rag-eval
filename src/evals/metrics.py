@@ -10,50 +10,75 @@ import numpy as np
 
 
 DEFAULT_RETRIEVAL_CUTOFFS = (1, 5, 10)
+CHUNK_INDEX_TOLERANCE = 5
 GENERATION_METRICS = ("answer_exact_match", "answer_character_f1")
+
+
+def _tolerant_relevance(
+    predictions: list[int],
+    truths: list[int],
+    cutoff: int,
+    tolerance: int = CHUNK_INDEX_TOLERANCE,
+) -> tuple[list[bool], int, int]:
+    """Match ranked predictions to unique truths once within an inclusive range."""
+    unique_truths = list(dict.fromkeys(truths))
+    unmatched = set(range(len(unique_truths)))
+    relevance: list[bool] = []
+
+    for prediction in predictions[:cutoff]:
+        candidates = [
+            (abs(prediction - unique_truths[index]), index)
+            for index in unmatched
+            if abs(prediction - unique_truths[index]) <= tolerance
+        ]
+        if not candidates:
+            relevance.append(False)
+            continue
+        _, matched_index = min(candidates)
+        unmatched.remove(matched_index)
+        relevance.append(True)
+
+    return relevance, len(unique_truths) - len(unmatched), len(unique_truths)
 
 
 def calc_precision(
     preds: list[list[int]], truths: list[list[int]], cutoffs: list[int]
 ) -> np.ndarray:
-    """Calculate precision@k for every requested cutoff."""
+    """Calculate precision@k using one-to-one chunk matches within ±5 indexes."""
     precision = np.zeros(len(cutoffs))
     for pred, truth in zip(preds, truths, strict=True):
-        truth_set = set(truth)
         for index, cutoff in enumerate(cutoffs):
-            precision[index] += sum(
-                item in truth_set for item in pred[:cutoff]
-            ) / cutoff
+            relevance, _, _ = _tolerant_relevance(pred, truth, cutoff)
+            precision[index] += sum(relevance) / cutoff
     return precision / len(preds) if preds else precision
 
 
 def calc_recall(
     preds: list[list[int]], truths: list[list[int]], cutoffs: list[int]
 ) -> np.ndarray:
-    """Calculate recall@k for every requested cutoff."""
+    """Calculate recall@k using unique truth coverage within ±5 indexes."""
     recall = np.zeros(len(cutoffs))
     for pred, truth in zip(preds, truths, strict=True):
-        truth_set = set(truth)
         for index, cutoff in enumerate(cutoffs):
-            recall[index] += sum(
-                item in truth_set for item in pred[:cutoff]
-            ) / max(len(truth_set), 1)
+            _, matched_truths, truth_count = _tolerant_relevance(
+                pred, truth, cutoff
+            )
+            recall[index] += matched_truths / max(truth_count, 1)
     return recall / len(preds) if preds else recall
 
 
 def calc_mrr(
     preds: list[list[int]], truths: list[list[int]], cutoffs: list[int]
 ) -> np.ndarray:
-    """Calculate mean reciprocal rank@k for every requested cutoff."""
+    """Calculate MRR@k with the first one-to-one match within ±5 indexes."""
     mrr = np.zeros(len(cutoffs))
     for pred, truth in zip(preds, truths, strict=True):
-        truth_set = set(truth)
         for index, cutoff in enumerate(cutoffs):
-            reciprocal_rank = 0.0
-            for rank, item in enumerate(pred[:cutoff], start=1):
-                if item in truth_set:
-                    reciprocal_rank = 1.0 / rank
-                    break
+            relevance, _, _ = _tolerant_relevance(pred, truth, cutoff)
+            reciprocal_rank = next(
+                (1.0 / rank for rank, relevant in enumerate(relevance, 1) if relevant),
+                0.0,
+            )
             mrr[index] += reciprocal_rank
     return mrr / len(preds) if preds else mrr
 
@@ -61,18 +86,21 @@ def calc_mrr(
 def calc_ndcg(
     preds: list[list[int]], truths: list[list[int]], cutoffs: list[int]
 ) -> np.ndarray:
-    """Calculate binary-relevance normalized DCG@k."""
+    """Calculate binary NDCG@k with one-to-one matches within ±5 indexes."""
     ndcg = np.zeros(len(cutoffs))
     for pred, truth in zip(preds, truths, strict=True):
-        truth_set = set(truth)
         for index, cutoff in enumerate(cutoffs):
+            relevance, _, truth_count = _tolerant_relevance(pred, truth, cutoff)
             dcg = sum(
                 1.0 / np.log2(rank + 1)
-                for rank, item in enumerate(pred[:cutoff], start=1)
-                if item in truth_set
+                for rank, relevant in enumerate(relevance, start=1)
+                if relevant
             )
-            ideal_hits = min(len(truth_set), cutoff)
-            idcg = sum(1.0 / np.log2(rank + 1) for rank in range(1, ideal_hits + 1))
+            ideal_hits = min(truth_count, cutoff)
+            idcg = sum(
+                1.0 / np.log2(rank + 1)
+                for rank in range(1, ideal_hits + 1)
+            )
             ndcg[index] += dcg / idcg if idcg else 0.0
     return ndcg / len(preds) if preds else ndcg
 
@@ -80,18 +108,18 @@ def calc_ndcg(
 def calc_map(
     preds: list[list[int]], truths: list[list[int]], cutoffs: list[int]
 ) -> np.ndarray:
-    """Calculate mean average precision@k."""
+    """Calculate MAP@k with one-to-one chunk matches within ±5 indexes."""
     mean_average_precision = np.zeros(len(cutoffs))
     for pred, truth in zip(preds, truths, strict=True):
-        truth_set = set(truth)
         for index, cutoff in enumerate(cutoffs):
+            relevance, _, truth_count = _tolerant_relevance(pred, truth, cutoff)
             hits = 0
             precision_sum = 0.0
-            for rank, item in enumerate(pred[:cutoff], start=1):
-                if item in truth_set:
+            for rank, relevant in enumerate(relevance, start=1):
+                if relevant:
                     hits += 1
                     precision_sum += hits / rank
-            denominator = min(len(truth_set), cutoff)
+            denominator = min(truth_count, cutoff)
             mean_average_precision[index] += (
                 precision_sum / denominator if denominator else 0.0
             )

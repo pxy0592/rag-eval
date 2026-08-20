@@ -14,6 +14,7 @@ from typing import Protocol
 from ..lib.smartq import SmartQChunkMapping, extract_chunk_mappings
 
 from .metrics import (
+    CHUNK_INDEX_TOLERANCE,
     RETRIEVAL_METRICS,
     answer_character_f1,
     answer_exact_match,
@@ -420,6 +421,7 @@ def score_records(
         invalid_response_count=sum(
             record.status == "invalid_response" for record in records
         ),
+        retrieval_index_tolerance=CHUNK_INDEX_TOLERANCE,
         metrics=summaries,
     )
 
@@ -470,6 +472,7 @@ def render_report(
         [
             f"- Report generated: {score.generated_at}",
             f"- Selected metrics: {', '.join(score.selected_metrics)}",
+            f"- Retrieval chunk-index tolerance: ±{score.retrieval_index_tolerance}",
             f"- Input records: {score.input_count}",
             f"- Successful records: {score.success_count}",
             f"- Failed records: {score.failed_count}",

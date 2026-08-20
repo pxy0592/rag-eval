@@ -37,3 +37,30 @@ def test_metric_selection_supports_all_and_rejects_unknown_metric():
     ]
     with pytest.raises(ValueError, match="unsupported metrics"):
         select_metrics("not-a-metric")
+
+
+@pytest.mark.parametrize("prediction", [45, 50, 55])
+def test_retrieval_metrics_match_inclusive_plus_or_minus_five(prediction):
+    functions = [calc_precision, calc_recall, calc_mrr, calc_ndcg, calc_map]
+
+    for metric in functions:
+        assert metric([[prediction]], [[50]], [1]).tolist() == [1.0]
+
+
+@pytest.mark.parametrize("prediction", [44, 56])
+def test_retrieval_metrics_reject_values_outside_plus_or_minus_five(prediction):
+    functions = [calc_precision, calc_recall, calc_mrr, calc_ndcg, calc_map]
+
+    for metric in functions:
+        assert metric([[prediction]], [[50]], [1]).tolist() == [0.0]
+
+
+def test_tolerant_matching_uses_each_ground_truth_chunk_only_once():
+    predictions = [[49, 51]]
+    expected = [[50]]
+
+    assert calc_precision(predictions, expected, [2]).tolist() == [0.5]
+    assert calc_recall(predictions, expected, [2]).tolist() == [1.0]
+    assert calc_mrr(predictions, expected, [2]).tolist() == [1.0]
+    assert calc_ndcg(predictions, expected, [2]).tolist() == [1.0]
+    assert calc_map(predictions, expected, [2]).tolist() == [1.0]

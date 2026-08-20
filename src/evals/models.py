@@ -121,6 +121,7 @@ class EvaluationScore(BaseModel):
     success_count: int
     failed_count: int
     invalid_response_count: int
+    retrieval_index_tolerance: int = 5
     metrics: list[MetricSummary]
 
     @classmethod

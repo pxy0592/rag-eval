@@ -43,7 +43,7 @@ uv run python -m src.evals.cli score \
   --metrics all
 ```
 
-Reads only saved `records.jsonl`, validates a comma-separated metric subset or `all`, and writes `metrics.json`. Supported metrics are the registry's retrieval metrics (`precision@k`, `recall@k`, `mrr@k`, `ndcg@k`, `map@k`) and generation metrics (`answer_exact_match`, `answer_character_f1`).
+Reads only saved `records.jsonl`, validates a comma-separated metric subset or `all`, and writes `metrics.json`. Supported metrics are the registry's retrieval metrics (`precision@k`, `recall@k`, `mrr@k`, `ndcg@k`, `map@k`) and generation metrics (`answer_exact_match`, `answer_character_f1`). A retrieved chunk index is relevant when it is within the inclusive range `expected_index - 5` through `expected_index + 5`. Matching is one-to-one so multiple nearby retrieved chunks cannot claim the same expected chunk.
 
 ### `report`
 

@@ -65,6 +65,9 @@ uv run python -m src.evals.cli report \
 
 The timestamps and agent calls remain unchanged; only `metrics.json` and `report.md` are regenerated.
 
+Retrieval metrics use an inclusive chunk-index tolerance of ±5. For example, expected index `50` matches retrieved indexes `45` through `55`. Each expected chunk can be matched only once. The tolerance is written to `metrics.json` and `report.md`.
+
+
 ## Validate implementation locally
 
 ```bash
