@@ -72,7 +72,7 @@ def test_run_command_collects_scores_and_reports_in_sequence(tmp_path, monkeypat
         ),
         encoding="utf-8",
     )
-    monkeypatch.setattr(cli, "_agent_client", lambda: SuccessfulFakeAgent())
+    monkeypatch.setattr(cli, "_qa_client", lambda qa_mode: SuccessfulFakeAgent())
 
     assert cli.main(
         [
@@ -92,3 +92,44 @@ def test_run_command_collects_scores_and_reports_in_sequence(tmp_path, monkeypat
     assert (run_dir / "records.jsonl").is_file()
     assert (run_dir / "metrics.json").is_file()
     assert (run_dir / "report.md").is_file()
+
+
+def test_run_command_selects_knowledge_chat_mode(tmp_path, monkeypatch):
+    dataset = tmp_path / "validation.json"
+    dataset.write_text(
+        json.dumps(
+            [{
+                "type": "factual",
+                "language": "cn",
+                "article_title": "knowledge.doc",
+                "chunks": [51],
+                "question": "question",
+                "answer": "4041人",
+            }],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    selected_modes = []
+    monkeypatch.setattr(
+        cli,
+        "_qa_client",
+        lambda qa_mode: selected_modes.append(qa_mode) or SuccessfulFakeAgent(),
+    )
+
+    assert cli.main(
+        [
+            "run",
+            "--dataset",
+            str(dataset),
+            "--run-id",
+            "knowledge-run",
+            "--output-dir",
+            str(tmp_path / "runs"),
+            "--qa-mode",
+            "knowledge",
+            "--metrics",
+            "precision@1",
+        ]
+    ) == 0
+    assert selected_modes == ["knowledge"]

@@ -1,4 +1,4 @@
-"""Data models for deterministic SmartQ Agent evaluation runs."""
+"""Data models for deterministic SmartQ QA evaluation runs."""
 
 from __future__ import annotations
 
@@ -75,6 +75,7 @@ class EvaluationRun(BaseModel):
     dataset_sha256: str
     input_count: int
     agent_id: str
+    qa_mode: Literal["agent", "knowledge"] = "agent"
     knowledge_base_ids: list[str] = Field(default_factory=list)
     started_at: str
     completed_at: str | None = None

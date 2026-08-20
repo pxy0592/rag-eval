@@ -23,6 +23,7 @@ class Settings(BaseModel):
     SMARTQ_TENANT_ID: str | None = os.getenv("SMARTQ_TENANT_ID")
     SMARTQ_AGENT_ID: str | None = os.getenv("SMARTQ_AGENT_ID")
     SMARTQ_KNOWLEDGE_BASE_IDS: str = os.getenv("SMARTQ_KNOWLEDGE_BASE_IDS", "")
+    SMARTQ_KNOWLEDGE_IDS: str = os.getenv("SMARTQ_KNOWLEDGE_IDS", "")
     SMARTQ_AGENT_TIMEOUT_SECONDS: int = int(
         os.getenv("SMARTQ_AGENT_TIMEOUT_SECONDS", "180")
     )

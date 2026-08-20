@@ -18,6 +18,8 @@
 
 ## Run a complete evaluation
 
+Use the default Agent QA mode (`POST /agent-chat/:session_id`):
+
 ```bash
 uv run python -m src.evals.cli run \
   --dataset dataset/smartq_qa_1.json \
@@ -25,6 +27,19 @@ uv run python -m src.evals.cli run \
   --output-dir evaluation_runs \
   --metrics all
 ```
+
+Use knowledge-base QA mode (`POST /knowledge-chat/:session_id`):
+
+```bash
+uv run python -m src.evals.cli run \
+  --dataset dataset/smartq_qa_1.json \
+  --run-id smartq-knowledge-qa-20260820 \
+  --qa-mode knowledge \
+  --output-dir evaluation_runs \
+  --metrics all
+```
+
+Set `SMARTQ_KNOWLEDGE_BASE_IDS` and optionally `SMARTQ_KNOWLEDGE_IDS` as comma-separated IDs. Knowledge mode does not require `SMARTQ_AGENT_ID`.
 
 Expected artifacts:
 
@@ -56,4 +71,4 @@ The timestamps and agent calls remain unchanged; only `metrics.json` and `report
 uv run pytest
 ```
 
-Tests use mocked Agent QA SSE responses and fixture validation records. They do not contact SmartQ, load local LLMs, or require a GPU.
+Tests use mocked Agent QA and knowledge-chat SSE responses and fixture validation records. They do not contact SmartQ, load local LLMs, or require a GPU.

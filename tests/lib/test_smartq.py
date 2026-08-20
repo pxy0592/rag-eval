@@ -290,3 +290,85 @@ def test_agent_qa_maps_tool_result_chunk_uuid_to_validation_index(monkeypatch):
     assert response.retrieved_chunks[1].chunk_index == 51
     assert response.retrieved_chunks[1].tool_name == "knowledge_search"
     assert response.retrieved_chunks[1].rank == 2
+
+
+def test_knowledge_qa_posts_document_scope_and_parses_top_level_references(monkeypatch):
+    from src.lib.smartq import SmartQKnowledgeQAClient
+
+    reference_event = {
+        "response_type": "references",
+        "content": "",
+        "done": False,
+        "knowledge_references": [
+            {
+                "id": "chunk-51",
+                "chunk_index": 51,
+                "knowledge_id": "knowledge-1",
+                "knowledge_title": "knowledge.docx",
+                "score": 4.04,
+            }
+        ],
+    }
+    answer_event = {
+        "response_type": "answer",
+        "content": "4041人",
+        "done": True,
+        "knowledge_references": None,
+    }
+    urlopen = Mock(
+        side_effect=[
+            FakeResponse({"success": True, "data": {"id": "session-1"}}),
+            StreamingResponse(
+                [
+                    ("event: message\n").encode(),
+                    (
+                        "data: "
+                        + json.dumps(
+                            {
+                                "response_type": "agent_query",
+                                "content": "",
+                                "done": True,
+                            }
+                        )
+                        + "\n"
+                    ).encode(),
+                    ("event: message\n").encode(),
+                    ("data: " + json.dumps(reference_event) + "\n").encode(),
+                    ("event: message\n").encode(),
+                    ("data: " + json.dumps(answer_event) + "\n").encode(),
+                ]
+            ),
+        ]
+    )
+    monkeypatch.setattr("src.lib.smartq.urlopen", urlopen)
+
+    client = SmartQKnowledgeQAClient(
+        "http://smartq.example",
+        "secret-key",
+        "tenant-1",
+        knowledge_base_ids=["kb-1"],
+        knowledge_ids=["knowledge-1"],
+    )
+    response = client.ask("现员多少人？")
+
+    request = urlopen.call_args_list[1].args[0]
+    assert request.full_url == (
+        "http://smartq.example/api/v1/knowledge-chat/session-1"
+    )
+    assert json.loads(request.data.decode()) == {
+        "query": "现员多少人？",
+        "knowledge_base_ids": ["kb-1"],
+        "knowledge_ids": ["knowledge-1"],
+        "disable_title": True,
+        "enable_memory": False,
+        "channel": "api",
+    }
+    assert client.qa_mode == "knowledge"
+    assert response.answer == "4041人"
+    assert response.retrieved_chunk_indices == [51]
+    assert response.retrieved_chunks[0].chunk_id == "chunk-51"
+    assert response.retrieved_chunks[0].score == 4.04
+    references_event = next(
+        event for event in response.events if event["response_type"] == "references"
+    )
+    assert references_event["data"]["references"][0]["id"] == "chunk-51"

@@ -350,7 +350,7 @@ def _optional_float(value: Any) -> float | None:
 
 @dataclass(frozen=True)
 class SmartQAgentResponse:
-    """Terminal response assembled from a SmartQ Agent QA SSE stream."""
+    """Terminal response assembled from a SmartQ QA SSE stream."""
 
     answer: str
     retrieved_chunk_indices: list[int] | None
@@ -388,6 +388,11 @@ class SmartQAgentClient:
         ]
 
     @property
+    def qa_mode(self) -> str:
+        """Evaluation submission mode used for run metadata."""
+        return "agent"
+
+    @property
     def agent_id(self) -> str:
         """Configured Agent identity safe to persist in local run metadata."""
         return self._agent_id
@@ -396,6 +401,19 @@ class SmartQAgentClient:
     def knowledge_base_ids(self) -> list[str]:
         """Configured knowledge-base scope safe to persist in run metadata."""
         return list(self._knowledge_base_ids)
+
+    @property
+    def _chat_endpoint(self) -> str:
+        return "agent-chat"
+
+    def _build_request_data(self, question: str) -> dict[str, Any]:
+        return {
+            "query": question,
+            "agent_id": self._agent_id,
+            "agent_enabled": True,
+            "knowledge_base_ids": self._knowledge_base_ids,
+            "channel": "api",
+        }
 
     def ask(self, question: str) -> SmartQAgentResponse:
         """Submit one question, parse its SSE stream, and return a terminal result."""
@@ -408,15 +426,9 @@ class SmartQAgentClient:
 
         try:
             session_id = self._create_session()
-            request_data = {
-                "query": question,
-                "agent_id": self._agent_id,
-                "agent_enabled": True,
-                "knowledge_base_ids": self._knowledge_base_ids,
-                "channel": "api",
-            }
+            request_data = self._build_request_data(question)
             request = Request(
-                f"{self._api_url}/agent-chat/{quote(session_id, safe='')}",
+                f"{self._api_url}/{self._chat_endpoint}/{quote(session_id, safe='')}",
                 data=json.dumps(request_data).encode("utf-8"),
                 headers=self._headers,
                 method="POST",
@@ -445,7 +457,10 @@ class SmartQAgentClient:
                     response_type = str(event.get("response_type") or "")
                     content = str(event.get("content") or "")
                     data = event.get("data")
-                    safe_data = data if isinstance(data, dict) else {}
+                    safe_data = dict(data) if isinstance(data, dict) else {}
+                    knowledge_references = event.get("knowledge_references")
+                    if isinstance(knowledge_references, list):
+                        safe_data.setdefault("references", knowledge_references)
                     events.append(
                         {
                             "response_type": response_type,
@@ -465,6 +480,12 @@ class SmartQAgentClient:
                     elif response_type == "error":
                         error_message = content or str(safe_data.get("message") or "Agent QA error")
                     elif response_type == "complete":
+                        break
+                    if event.get("done") is True and response_type in {
+                        "answer",
+                        "complete",
+                        "error",
+                    }:
                         break
         except Exception as error:
             error_message = self._sanitize_error(f"{type(error).__name__}: {error}")
@@ -538,3 +559,52 @@ class SmartQAgentClient:
                 for key, item in value.items()
             }
         return value
+
+class SmartQKnowledgeQAClient(SmartQAgentClient):
+    """Client for SmartQ's non-agent knowledge-base RAG QA endpoint."""
+
+    def __init__(
+        self,
+        api_url: str | None,
+        api_key: str | None,
+        tenant_id: str | None,
+        knowledge_base_ids: list[str] | None = None,
+        knowledge_ids: list[str] | None = None,
+        timeout_seconds: int = 180,
+    ) -> None:
+        super().__init__(
+            api_url,
+            api_key,
+            tenant_id,
+            agent_id="knowledge-chat",
+            knowledge_base_ids=knowledge_base_ids,
+            timeout_seconds=timeout_seconds,
+        )
+        self._knowledge_ids = [
+            knowledge_id.strip()
+            for knowledge_id in knowledge_ids or []
+            if knowledge_id.strip()
+        ]
+
+    @property
+    def qa_mode(self) -> str:
+        return "knowledge"
+
+    @property
+    def agent_id(self) -> str:
+        """Stable run-manifest identity for knowledge-chat evaluations."""
+        return "knowledge-chat"
+
+    @property
+    def _chat_endpoint(self) -> str:
+        return "knowledge-chat"
+
+    def _build_request_data(self, question: str) -> dict[str, Any]:
+        return {
+            "query": question,
+            "knowledge_base_ids": self._knowledge_base_ids,
+            "knowledge_ids": self._knowledge_ids,
+            "disable_title": True,
+            "enable_memory": False,
+            "channel": "api",
+        }

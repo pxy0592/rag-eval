@@ -1,4 +1,4 @@
-"""Command-line entry point for deterministic SmartQ Agent evaluation."""
+"""Command-line entry point for deterministic SmartQ QA evaluation."""
 
 from __future__ import annotations
 
@@ -7,7 +7,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 import sys
 
-from ..lib.smartq import SmartQAPIError, SmartQAgentClient
+from ..lib.smartq import (
+    SmartQAPIError,
+    SmartQAgentClient,
+    SmartQKnowledgeQAClient,
+)
 from ..settings import settings
 from .models import EvaluationError
 from .runner import collect_dataset, report_run, score_run
@@ -16,13 +20,13 @@ from .runner import collect_dataset, report_run, score_run
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Evaluate SmartQ Agent QA performance on a dataset of questions and expected answers.\n"
+            "Evaluate SmartQ Agent or knowledge-base QA performance on a dataset.\n"
             "Execute the full evaluation workflow (collect, score, report) or individual steps.\n"
-            "- Collect question-answer pairs from a dataset and send them to the SmartQ Agent for evaluation.\n"
+            "- Collect question-answer pairs from a dataset and send them through the selected SmartQ QA mode.\n"
             "- Score the evaluation results and generate a metrics report.\n"
             "- Review the evaluation results in the generated report."
         ),
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -30,6 +34,15 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--dataset", type=Path, required=True)
         command.add_argument("--run-id")
         command.add_argument("--output-dir", type=Path, default=Path("evaluation_runs"))
+        command.add_argument(
+            "--qa-mode",
+            choices=("agent", "knowledge"),
+            default="agent",
+            help=(
+                "Submit questions through /agent-chat (default) or "
+                "/knowledge-chat."
+            ),
+        )
         command.add_argument("--metrics", default="all")
 
     collection_arguments(subparsers.add_parser("collect"))
@@ -45,16 +58,29 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _default_run_id() -> str:
-    return "smartq-agent-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+def _default_run_id(qa_mode: str) -> str:
+    return f"smartq-{qa_mode}-" + datetime.now(timezone.utc).strftime(
+        "%Y%m%d-%H%M%S"
+    )
 
 
-def _agent_client() -> SmartQAgentClient:
-    knowledge_base_ids = [
-        value.strip()
-        for value in settings.SMARTQ_KNOWLEDGE_BASE_IDS.split(",")
-        if value.strip()
-    ]
+def _configured_ids(raw_value: str) -> list[str]:
+    return [value.strip() for value in raw_value.split(",") if value.strip()]
+
+
+def _qa_client(
+    qa_mode: str,
+) -> SmartQAgentClient | SmartQKnowledgeQAClient:
+    knowledge_base_ids = _configured_ids(settings.SMARTQ_KNOWLEDGE_BASE_IDS)
+    if qa_mode == "knowledge":
+        return SmartQKnowledgeQAClient(
+            settings.SMARTQ_API_URL,
+            settings.SMARTQ_API_KEY,
+            settings.SMARTQ_TENANT_ID,
+            knowledge_base_ids=knowledge_base_ids,
+            knowledge_ids=_configured_ids(settings.SMARTQ_KNOWLEDGE_IDS),
+            timeout_seconds=settings.SMARTQ_AGENT_TIMEOUT_SECONDS,
+        )
     return SmartQAgentClient(
         settings.SMARTQ_API_URL,
         settings.SMARTQ_API_KEY,
@@ -75,12 +101,12 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if arguments.command == "collect":
-            run_id = arguments.run_id or _default_run_id()
+            run_id = arguments.run_id or _default_run_id(arguments.qa_mode)
             run_dir, records = collect_dataset(
                 arguments.dataset,
                 arguments.output_dir,
                 run_id,
-                _agent_client(),
+                _qa_client(arguments.qa_mode),
             )
             print(f"Collected {len(records)} records: {run_dir}")
             return 0
@@ -93,12 +119,12 @@ def main(argv: list[str] | None = None) -> int:
             print(report_run(arguments.run_dir))
             return 0
         if arguments.command == "run":
-            run_id = arguments.run_id or _default_run_id()
+            run_id = arguments.run_id or _default_run_id(arguments.qa_mode)
             run_dir, records = collect_dataset(
                 arguments.dataset,
                 arguments.output_dir,
                 run_id,
-                _agent_client(),
+                _qa_client(arguments.qa_mode),
             )
             score_run(run_dir, arguments.metrics)
             report_path = report_run(run_dir)

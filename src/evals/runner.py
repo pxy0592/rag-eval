@@ -1,4 +1,4 @@
-"""Collection, persistence, scoring, and reporting for SmartQ Agent runs."""
+"""Collection, persistence, scoring, and reporting for SmartQ QA runs."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ REPORT_FILENAME = "report.md"
 
 @dataclass(frozen=True)
 class AgentResponse:
-    """Transport-neutral terminal SmartQ Agent QA response."""
+    """Transport-neutral terminal SmartQ QA response."""
 
     answer: str
     retrieved_chunk_indices: list[int] | None
@@ -54,7 +54,7 @@ class AgentClient(Protocol):
     """Minimal boundary used by collection and fully replaceable in tests."""
 
     def ask(self, question: str) -> AgentResponse:
-        """Send one question and return its terminal Agent QA response."""
+        """Send one question and return its terminal QA response."""
 
 
 def load_validation_records(path: Path) -> list[ValidationRecord]:
@@ -230,7 +230,7 @@ def collect_records(
                         retrieved_chunk_indices=retrieved_chunk_indices,
                         retrieved_chunks=retrieved_chunks,
                         events=response.events,
-                        error="Agent QA response did not contain an answer",
+                        error="SmartQ QA response did not contain an answer",
                     )
                 else:
                     result = _result_from_record(
@@ -276,6 +276,7 @@ def collect_dataset(
         dataset_sha256=dataset_sha256(dataset_path),
         input_count=len(records),
         agent_id=str(getattr(agent_client, "agent_id", "configured-agent")),
+        qa_mode=str(getattr(agent_client, "qa_mode", "agent")),
         knowledge_base_ids=list(getattr(agent_client, "knowledge_base_ids", [])),
         started_at=datetime.now(timezone.utc).isoformat(),
         status="running",
@@ -450,7 +451,7 @@ def render_report(
 ) -> str:
     """Render a traceable Markdown report from saved results and aggregates."""
     lines = [
-        f"# SmartQ Agent Evaluation Report: {score.run_id}",
+        f"# SmartQ QA Evaluation Report: {score.run_id}",
         "",
         "## Run Summary",
         "",
@@ -460,6 +461,7 @@ def render_report(
             [
                 f"- Dataset: {run.dataset_path}",
                 f"- Dataset SHA-256: {run.dataset_sha256}",
+                f"- QA mode: {run.qa_mode}",
                 f"- Agent: {run.agent_id}",
                 f"- Run status: {run.status}",
             ]
