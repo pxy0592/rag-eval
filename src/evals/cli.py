@@ -14,7 +14,16 @@ from .runner import collect_dataset, report_run, score_run
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Evaluate SmartQ Agent QA")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Evaluate SmartQ Agent QA performance on a dataset of questions and expected answers.\n"
+            "Execute the full evaluation workflow (collect, score, report) or individual steps.\n"
+            "- Collect question-answer pairs from a dataset and send them to the SmartQ Agent for evaluation.\n"
+            "- Score the evaluation results and generate a metrics report.\n"
+            "- Review the evaluation results in the generated report."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     def collection_arguments(command: argparse.ArgumentParser) -> None:
