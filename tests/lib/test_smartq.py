@@ -130,3 +130,112 @@ def test_get_article_uses_all_processed_chunks_in_chinese_order(monkeypatch):
 def test_client_requires_smartq_configuration(api_url, api_key, message):
     with pytest.raises(SmartQAPIError, match=message):
         SmartQClient(api_url, api_key)
+
+class StreamingResponse:
+    def __init__(self, lines):
+        self.lines = lines
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+    def __iter__(self):
+        return iter(self.lines)
+
+
+def test_agent_qa_creates_session_parses_sse_and_preserves_rank(monkeypatch):
+    from src.lib.smartq import SmartQAgentClient
+
+    session_response = FakeResponse({"success": True, "data": {"id": "session-1"}})
+    stream_response = StreamingResponse(
+        [
+            b'data: {"response_type":"answer","content":"404"}\n',
+            b'data: {"response_type":"references","data":{"references":[{"chunk_index":51},{"chunk_index":51},{"chunk_index":108}]}}\n',
+            'data: {"response_type":"answer","content":"1人"}\n'.encode("utf-8"),
+            b'data: {"response_type":"complete"}\n',
+        ]
+    )
+    urlopen = Mock(side_effect=[session_response, stream_response])
+    monkeypatch.setattr("src.lib.smartq.urlopen", urlopen)
+
+    client = SmartQAgentClient(
+        "http://smartq.example",
+        "secret-key",
+        tenant_id="tenant-1",
+        agent_id="agent-1",
+        knowledge_base_ids=["kb-1"],
+    )
+
+    response = client.ask("\u73b0\u5458\u591a\u5c11\u4eba？")
+
+    assert response.answer == "4041\u4eba"
+    assert response.retrieved_chunk_indices == [51, 108]
+    assert response.error is None
+    assert urlopen.call_args_list[0].args[0].full_url == "http://smartq.example/api/v1/sessions"
+    request = urlopen.call_args_list[1].args[0]
+    assert request.full_url == "http://smartq.example/api/v1/agent-chat/session-1"
+    assert request.get_header("X-api-key") == "secret-key"
+    assert request.get_header("X-tenant-id") == "tenant-1"
+    assert json.loads(request.data.decode("utf-8")) == {
+        "query": "\u73b0\u5458\u591a\u5c11\u4eba？",
+        "agent_id": "agent-1",
+        "agent_enabled": True,
+        "knowledge_base_ids": ["kb-1"],
+        "channel": "api",
+    }
+
+
+def test_agent_qa_returns_sanitized_error_event(monkeypatch):
+    from src.lib.smartq import SmartQAgentClient
+
+    urlopen = Mock(
+        side_effect=[
+            FakeResponse({"success": True, "data": {"id": "session-1"}}),
+            StreamingResponse(
+                [
+                    b'data: {"response_type":"error","content":"agent unavailable"}\n',
+                    b'data: {"response_type":"complete"}\n',
+                ]
+            ),
+        ]
+    )
+    monkeypatch.setattr("src.lib.smartq.urlopen", urlopen)
+
+    response = SmartQAgentClient(
+        "http://smartq.example", "secret-key", "tenant-1", "agent-1"
+    ).ask("question")
+
+    assert response.answer == ""
+    assert response.retrieved_chunk_indices is None
+    assert response.error == "agent unavailable"
+    assert "secret-key" not in response.error
+
+
+def test_agent_qa_redacts_api_key_from_persistable_sse_diagnostics(monkeypatch):
+    from src.lib.smartq import SmartQAgentClient
+
+    urlopen = Mock(
+        side_effect=[
+            FakeResponse({"success": True, "data": {"id": "session-1"}}),
+            StreamingResponse(
+                [
+                    b'data: {"response_type":"answer","content":"secret-key answer"}\n',
+                    b'data: {"response_type":"references","data":{"debug":"secret-key","references":[{"chunk_index":51}]}}\n',
+                    b'data: {"response_type":"complete"}\n',
+                ]
+            ),
+        ]
+    )
+    monkeypatch.setattr("src.lib.smartq.urlopen", urlopen)
+
+    response = SmartQAgentClient(
+        "http://smartq.example", "secret-key", "tenant-1", "agent-1"
+    ).ask("question")
+
+    serialized_events = json.dumps(response.events)
+    assert "secret-key" not in serialized_events
+    assert "secret-key" not in response.answer
+    assert "[REDACTED]" in serialized_events
+    assert response.answer == "[REDACTED] answer"

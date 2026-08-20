@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -251,3 +252,196 @@ class SmartQClient:
         if payload.get("success") is False:
             raise SmartQAPIError(str(payload.get("message") or "SmartQ API request failed"))
         return payload
+
+@dataclass(frozen=True)
+class SmartQAgentResponse:
+    """Terminal response assembled from a SmartQ Agent QA SSE stream."""
+
+    answer: str
+    retrieved_chunk_indices: list[int] | None
+    events: list[dict[str, Any]]
+    duration_ms: int
+    error: str | None = None
+
+
+class SmartQAgentClient:
+    """Minimal synchronous client for SmartQ's session-backed Agent QA API."""
+
+    _API_PATH = "/api/v1"
+
+    def __init__(
+        self,
+        api_url: str | None,
+        api_key: str | None,
+        tenant_id: str | None,
+        agent_id: str | None,
+        knowledge_base_ids: list[str] | None = None,
+        timeout_seconds: int = 180,
+    ) -> None:
+        self._api_url = self._normalise_api_url(api_url)
+        self._api_key = self._require_value(api_key, "SMARTQ_API_KEY")
+        self._tenant_id = self._require_value(tenant_id, "SMARTQ_TENANT_ID")
+        self._agent_id = self._require_value(agent_id, "SMARTQ_AGENT_ID")
+        if timeout_seconds < 1:
+            raise SmartQAPIError("SMARTQ_AGENT_TIMEOUT_SECONDS must be at least 1")
+        self._timeout_seconds = timeout_seconds
+        self._knowledge_base_ids = [
+            knowledge_id.strip()
+            for knowledge_id in knowledge_base_ids or []
+            if knowledge_id.strip()
+        ]
+
+    @property
+    def agent_id(self) -> str:
+        """Configured Agent identity safe to persist in local run metadata."""
+        return self._agent_id
+
+    @property
+    def knowledge_base_ids(self) -> list[str]:
+        """Configured knowledge-base scope safe to persist in run metadata."""
+        return list(self._knowledge_base_ids)
+
+    def ask(self, question: str) -> SmartQAgentResponse:
+        """Submit one question, parse its SSE stream, and return a terminal result."""
+        question = self._require_value(question, "Question")
+        started_at = time.monotonic()
+        events: list[dict[str, Any]] = []
+        answer_parts: list[str] = []
+        retrieved_chunk_indices: list[int] = []
+        references_received = False
+        error_message: str | None = None
+
+        try:
+            session_id = self._create_session()
+            request_data = {
+                "query": question,
+                "agent_id": self._agent_id,
+                "agent_enabled": True,
+                "knowledge_base_ids": self._knowledge_base_ids,
+                "channel": "api",
+            }
+            request = Request(
+                f"{self._api_url}/agent-chat/{quote(session_id, safe='')}",
+                data=json.dumps(request_data).encode("utf-8"),
+                headers=self._headers,
+                method="POST",
+            )
+            with urlopen(request, timeout=self._timeout_seconds) as response:
+                for raw_line in response:
+                    line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+                    if not line.startswith("data:"):
+                        continue
+                    payload = line[len("data:") :].strip()
+                    if not payload:
+                        continue
+                    try:
+                        event = json.loads(payload)
+                    except json.JSONDecodeError:
+                        events.append(
+                            {
+                                "response_type": "invalid_event",
+                                "content": "Invalid JSON SSE event",
+                                "data": {},
+                            }
+                        )
+                        continue
+                    if not isinstance(event, dict):
+                        continue
+                    response_type = str(event.get("response_type") or "")
+                    content = str(event.get("content") or "")
+                    data = event.get("data")
+                    safe_data = data if isinstance(data, dict) else {}
+                    events.append(
+                        {
+                            "response_type": response_type,
+                            "content": self._sanitize_error(content),
+                            "data": self._sanitize_payload(safe_data),
+                        }
+                    )
+                    if response_type == "answer":
+                        answer_parts.append(self._sanitize_error(content))
+                    elif response_type == "references":
+                        references_received = True
+                        references = safe_data.get("references")
+                        if isinstance(references, list):
+                            for reference in references:
+                                if not isinstance(reference, dict):
+                                    continue
+                                chunk_index = reference.get("chunk_index")
+                                if isinstance(chunk_index, int) and not isinstance(
+                                    chunk_index, bool
+                                ) and chunk_index >= 0 and chunk_index not in retrieved_chunk_indices:
+                                    retrieved_chunk_indices.append(chunk_index)
+                    elif response_type == "error":
+                        error_message = content or str(safe_data.get("message") or "Agent QA error")
+                    elif response_type == "complete":
+                        break
+        except Exception as error:
+            error_message = self._sanitize_error(f"{type(error).__name__}: {error}")
+
+        return SmartQAgentResponse(
+            answer="".join(answer_parts),
+            retrieved_chunk_indices=(
+                retrieved_chunk_indices if references_received else None
+            ),
+            events=events,
+            duration_ms=int((time.monotonic() - started_at) * 1000),
+            error=self._sanitize_error(error_message) if error_message else None,
+        )
+
+    @property
+    def _headers(self) -> dict[str, str]:
+        return {
+            "X-API-Key": self._api_key,
+            "X-Tenant-ID": self._tenant_id,
+            "Content-Type": "application/json",
+        }
+
+    def _create_session(self) -> str:
+        request = Request(
+            f"{self._api_url}/sessions",
+            data=b"{}",
+            headers=self._headers,
+            method="POST",
+        )
+        with urlopen(request, timeout=self._timeout_seconds) as response:
+            try:
+                payload = json.loads(response.read().decode("utf-8"))
+            except (AttributeError, UnicodeDecodeError, json.JSONDecodeError) as error:
+                raise SmartQAPIError("SmartQ returned an invalid session response") from error
+        if not isinstance(payload, dict) or payload.get("success") is False:
+            raise SmartQAPIError(
+                str(payload.get("message") if isinstance(payload, dict) else "SmartQ session request failed")
+            )
+        data = payload.get("data")
+        session_id = data.get("id") if isinstance(data, dict) else None
+        if not isinstance(session_id, str) or not session_id.strip():
+            raise SmartQAPIError("SmartQ returned a session response without an ID")
+        return session_id
+
+    @classmethod
+    def _normalise_api_url(cls, value: str | None) -> str:
+        base_url = cls._require_value(value, "SMARTQ_API_URL").rstrip("/")
+        return base_url if base_url.endswith(cls._API_PATH) else f"{base_url}{cls._API_PATH}"
+
+    @staticmethod
+    def _require_value(value: str | None, label: str) -> str:
+        if not value or not value.strip():
+            raise SmartQAPIError(f"{label} must be set")
+        return value.strip()
+
+    def _sanitize_error(self, message: str) -> str:
+        return message.replace(self._api_key, "[REDACTED]")
+
+    def _sanitize_payload(self, value: Any) -> Any:
+        """Recursively redact the configured API key from persisted SSE data."""
+        if isinstance(value, str):
+            return self._sanitize_error(value)
+        if isinstance(value, list):
+            return [self._sanitize_payload(item) for item in value]
+        if isinstance(value, dict):
+            return {
+                str(key): self._sanitize_payload(item)
+                for key, item in value.items()
+            }
+        return value

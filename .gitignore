@@ -51,3 +51,6 @@ ipython_config.py
 
 # Dataset
 dataset/
+
+# Local SmartQ Agent evaluation artifacts
+evaluation_runs/

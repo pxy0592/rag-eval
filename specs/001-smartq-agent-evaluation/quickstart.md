@@ -1,0 +1,59 @@
+# Quickstart: SmartQ Agent Evaluation
+
+## Prerequisites
+
+1. Install the locked project environment:
+
+   ```bash
+   uv sync
+   ```
+
+2. Copy `.env.example` to `.env` and set the SmartQ values required by the [CLI contract](contracts/evaluation-cli.md). Use the backend service URL, not the documentation or UI URL.
+
+3. Confirm the validation set is available:
+
+   ```bash
+   test -f dataset/smartq_qa_1.json
+   ```
+
+## Run a complete evaluation
+
+```bash
+uv run python -m src.evals.cli run \
+  --dataset dataset/smartq_qa_1.json \
+  --run-id smartq-qa-1-20260819 \
+  --output-dir evaluation_runs \
+  --metrics all
+```
+
+Expected artifacts:
+
+```text
+evaluation_runs/smartq-qa-1-20260819/
+├── run.json
+├── records.jsonl
+├── metrics.json
+└── report.md
+```
+
+`records.jsonl` has one terminal record for every source question. A failed Agent request remains represented by a `failed` record; a successful answer without reference indexes is marked retrieval-unscorable but can still receive generation scores.
+
+## Re-score a saved run without SmartQ access
+
+```bash
+uv run python -m src.evals.cli score \
+  --run-dir evaluation_runs/smartq-qa-1-20260819 \
+  --metrics precision@1,recall@5,answer_character_f1
+uv run python -m src.evals.cli report \
+  --run-dir evaluation_runs/smartq-qa-1-20260819
+```
+
+The timestamps and agent calls remain unchanged; only `metrics.json` and `report.md` are regenerated.
+
+## Validate implementation locally
+
+```bash
+uv run pytest
+```
+
+Tests use mocked Agent QA SSE responses and fixture validation records. They do not contact SmartQ, load local LLMs, or require a GPU.
