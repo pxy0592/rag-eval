@@ -122,6 +122,7 @@ class EvaluationScore(BaseModel):
     failed_count: int
     invalid_response_count: int
     retrieval_index_tolerance: int = 5
+    chunk_index_comparison_ignored: bool = False
     metrics: list[MetricSummary]
 
     @classmethod

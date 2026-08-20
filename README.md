@@ -96,6 +96,10 @@ Although SmartQ Dataset Creator only generates datasets, it is designed around *
 | **Answer Relevance**   | How well the answer fits the question | Adds missing but relevant info like France → “Paris” |
 | **Answer Correctness** | Alignment with ground truth           | Matches true reference answer accurately             |
 
+## 🎯 Generation-Only Scoring
+
+Use `--ignore-chunk-index` with the evaluation `score` or `run` command when chunk indexes are unavailable or intentionally excluded. The resulting report omits Precision, Recall, MRR, NDCG, and MAP and keeps only selected answer-generation metrics.
+
 ## ⚙️ Example Use Case
 
 This tool can be used to:

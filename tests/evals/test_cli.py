@@ -85,6 +85,7 @@ def test_run_command_collects_scores_and_reports_in_sequence(tmp_path, monkeypat
             str(tmp_path / "runs"),
             "--metrics",
             "precision@1,answer_exact_match",
+            "--ignore-chunk-index",
         ]
     ) == 0
 
@@ -92,6 +93,9 @@ def test_run_command_collects_scores_and_reports_in_sequence(tmp_path, monkeypat
     assert (run_dir / "records.jsonl").is_file()
     assert (run_dir / "metrics.json").is_file()
     assert (run_dir / "report.md").is_file()
+    metrics = json.loads((run_dir / "metrics.json").read_text())
+    assert metrics["chunk_index_comparison_ignored"] is True
+    assert metrics["selected_metrics"] == ["answer_exact_match"]
 
 
 def test_run_command_selects_knowledge_chat_mode(tmp_path, monkeypatch):
@@ -194,3 +198,42 @@ def test_run_command_accepts_jsonl_validation_dataset(tmp_path, monkeypatch):
         ]
     ) == 0
     assert (tmp_path / "runs" / "jsonl-run" / "records.jsonl").is_file()
+
+
+def test_score_command_can_ignore_chunk_index_metrics(tmp_path):
+    run_dir = tmp_path / "run-ignore"
+    run_dir.mkdir()
+    record = AgentResultRecord(
+        run_id="run-ignore",
+        record_index=0,
+        type="factual",
+        language="cn",
+        article_title="knowledge.doc",
+        question="question",
+        reference_answer="4041人",
+        expected_chunk_indices=[51],
+        answer="4041人",
+        retrieved_chunk_indices=[999],
+        status="success",
+    )
+    (run_dir / "records.jsonl").write_text(
+        record.model_dump_json() + "\n", encoding="utf-8"
+    )
+
+    assert cli.main(
+        [
+            "score",
+            "--run-dir",
+            str(run_dir),
+            "--metrics",
+            "all",
+            "--ignore-chunk-index",
+        ]
+    ) == 0
+
+    metrics = json.loads((run_dir / "metrics.json").read_text())
+    assert metrics["chunk_index_comparison_ignored"] is True
+    assert metrics["selected_metrics"] == [
+        "answer_exact_match",
+        "answer_character_f1",
+    ]

@@ -296,3 +296,48 @@ def test_load_validation_records_reports_jsonl_schema_line(tmp_path):
 
     with pytest.raises(EvaluationError, match="JSONL line 2 is invalid"):
         load_validation_records(dataset)
+
+
+def test_scoring_can_ignore_chunk_index_comparison():
+    records = [
+        saved_record(0, answer="4041人", retrieved=[999]),
+        saved_record(1, answer="wrong", retrieved=None),
+    ]
+
+    score = score_records(records, "all", ignore_chunk_index=True)
+
+    assert score.chunk_index_comparison_ignored is True
+    assert [metric.metric_name for metric in score.metrics] == [
+        "answer_exact_match",
+        "answer_character_f1",
+    ]
+    assert score.selected_metrics == [
+        "answer_exact_match",
+        "answer_character_f1",
+    ]
+    assert all(metric.scored_count == 2 for metric in score.metrics)
+
+
+def test_ignore_chunk_index_requires_a_generation_metric():
+    with pytest.raises(EvaluationError, match="no generation metrics"):
+        score_records(
+            [saved_record(0)],
+            "precision@1,recall@1",
+            ignore_chunk_index=True,
+        )
+
+
+def test_report_marks_chunk_index_comparison_as_ignored(tmp_path):
+    run_dir = tmp_path / "run-ignored"
+    run_dir.mkdir()
+    (run_dir / "records.jsonl").write_text(
+        saved_record(0).model_dump_json() + "\n", encoding="utf-8"
+    )
+
+    score_run(run_dir, "all", ignore_chunk_index=True)
+    report = report_run(run_dir).read_text(encoding="utf-8")
+
+    assert "Chunk-index comparison ignored: True" in report
+    assert "Retrieval chunk-index tolerance" not in report
+    assert "precision@" not in report
+    assert "answer_exact_match" in report

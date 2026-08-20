@@ -15,6 +15,7 @@ from ..lib.smartq import SmartQChunkMapping, extract_chunk_mappings
 
 from .metrics import (
     CHUNK_INDEX_TOLERANCE,
+    GENERATION_METRICS,
     RETRIEVAL_METRICS,
     answer_character_f1,
     answer_exact_match,
@@ -393,12 +394,25 @@ def load_result_records(path: Path) -> list[AgentResultRecord]:
 
 
 def score_records(
-    records: list[AgentResultRecord], raw_metrics: str | Iterable[str] = "all"
+    records: list[AgentResultRecord],
+    raw_metrics: str | Iterable[str] = "all",
+    ignore_chunk_index: bool = False,
 ) -> EvaluationScore:
     """Calculate selected deterministic metrics from saved terminal records."""
     if not records:
         raise EvaluationError("cannot score an empty result set")
     selected_metrics = select_metrics(raw_metrics)
+    if ignore_chunk_index:
+        selected_metrics = [
+            metric
+            for metric in selected_metrics
+            if metric in GENERATION_METRICS
+        ]
+        if not selected_metrics:
+            raise EvaluationError(
+                "chunk-index comparison is ignored, but no generation metrics "
+                "were selected"
+            )
     run_ids = {record.run_id for record in records}
     if len(run_ids) != 1:
         raise EvaluationError("saved result records must belong to exactly one run")
@@ -475,14 +489,21 @@ def score_records(
             record.status == "invalid_response" for record in records
         ),
         retrieval_index_tolerance=CHUNK_INDEX_TOLERANCE,
+        chunk_index_comparison_ignored=ignore_chunk_index,
         metrics=summaries,
     )
 
 
-def score_run(run_dir: Path, raw_metrics: str | Iterable[str] = "all") -> EvaluationScore:
-    """Score `records.jsonl` and write a new machine-readable metrics artifact."""
+def score_run(
+    run_dir: Path,
+    raw_metrics: str | Iterable[str] = "all",
+    ignore_chunk_index: bool = False,
+) -> EvaluationScore:
+    """Score saved records, optionally omitting all retrieval comparisons."""
     records = load_result_records(run_dir / RECORDS_FILENAME)
-    score = score_records(records, raw_metrics)
+    score = score_records(
+        records, raw_metrics, ignore_chunk_index=ignore_chunk_index
+    )
     (run_dir / METRICS_FILENAME).write_text(
         score.model_dump_json(indent=2) + "\n", encoding="utf-8"
     )
@@ -525,7 +546,16 @@ def render_report(
         [
             f"- Report generated: {score.generated_at}",
             f"- Selected metrics: {', '.join(score.selected_metrics)}",
-            f"- Retrieval chunk-index tolerance: ±{score.retrieval_index_tolerance}",
+            "- Chunk-index comparison ignored: "
+            f"{score.chunk_index_comparison_ignored}",
+            *(
+                []
+                if score.chunk_index_comparison_ignored
+                else [
+                    "- Retrieval chunk-index tolerance: "
+                    f"±{score.retrieval_index_tolerance}"
+                ]
+            ),
             f"- Input records: {score.input_count}",
             f"- Successful records: {score.success_count}",
             f"- Failed records: {score.failed_count}",

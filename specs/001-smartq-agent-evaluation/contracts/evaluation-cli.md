@@ -40,10 +40,11 @@ Accepts either a non-empty JSON array (`.json`) or one validation-record object 
 ```bash
 uv run python -m src.evals.cli score \
   --run-dir evaluation_runs/smoke-20260819 \
-  --metrics all
+  --metrics all \
+  --ignore-chunk-index
 ```
 
-Reads only saved `records.jsonl`, validates a comma-separated metric subset or `all`, and writes `metrics.json`. Supported metrics are the registry's retrieval metrics (`precision@k`, `recall@k`, `mrr@k`, `ndcg@k`, `map@k`) and generation metrics (`answer_exact_match`, `answer_character_f1`). A retrieved chunk index is relevant when it is within the inclusive range `expected_index - 5` through `expected_index + 5`. Matching is one-to-one so multiple nearby retrieved chunks cannot claim the same expected chunk.
+Reads only saved `records.jsonl`, validates a comma-separated metric subset or `all`, and writes `metrics.json`. Pass `--ignore-chunk-index` to omit all retrieval metrics and score only selected generation metrics; this performs no `retrieved_chunk_indices` versus `expected_chunk_indices` comparison. Supported metrics are the registry's retrieval metrics (`precision@k`, `recall@k`, `mrr@k`, `ndcg@k`, `map@k`) and generation metrics (`answer_exact_match`, `answer_character_f1`). A retrieved chunk index is relevant when it is within the inclusive range `expected_index - 5` through `expected_index + 5`. Matching is one-to-one so multiple nearby retrieved chunks cannot claim the same expected chunk.
 
 ### `report`
 

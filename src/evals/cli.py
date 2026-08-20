@@ -50,16 +50,29 @@ def _parser() -> argparse.ArgumentParser:
         )
         command.add_argument("--metrics", default="all")
 
+    def scoring_arguments(command: argparse.ArgumentParser) -> None:
+        command.add_argument(
+            "--ignore-chunk-index",
+            action="store_true",
+            help=(
+                "Skip precision/recall/MRR/NDCG/MAP and score only "
+                "generation metrics."
+            ),
+        )
+
     collection_arguments(subparsers.add_parser("collect"))
 
     score = subparsers.add_parser("score")
     score.add_argument("--run-dir", type=Path, required=True)
     score.add_argument("--metrics", default="all")
+    scoring_arguments(score)
 
     report = subparsers.add_parser("report")
     report.add_argument("--run-dir", type=Path, required=True)
 
-    collection_arguments(subparsers.add_parser("run"))
+    run = subparsers.add_parser("run")
+    collection_arguments(run)
+    scoring_arguments(run)
     return parser
 
 
@@ -118,7 +131,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Collected {len(records)} records: {run_dir}")
             return 0
         if arguments.command == "score":
-            score = score_run(arguments.run_dir, arguments.metrics)
+            score = score_run(
+                arguments.run_dir,
+                arguments.metrics,
+                ignore_chunk_index=arguments.ignore_chunk_index,
+            )
             print(arguments.run_dir / "metrics.json")
             print(f"Scored {score.input_count} records")
             return 0
@@ -133,7 +150,11 @@ def main(argv: list[str] | None = None) -> int:
                 run_id,
                 _qa_client(arguments.qa_mode),
             )
-            score_run(run_dir, arguments.metrics)
+            score_run(
+                run_dir,
+                arguments.metrics,
+                ignore_chunk_index=arguments.ignore_chunk_index,
+            )
             report_path = report_run(run_dir)
             print(f"Collected {len(records)} records: {run_dir}")
             print(report_path)
