@@ -148,7 +148,7 @@ def test_invalid_lang_link(processor, mock_requests):
 def test_chunk_model_validation():
     chunk = Chunk(heading="Introduction", level=1, content="Sample content")
     assert chunk.heading == "Introduction"
-    assert isinstance(chunk.dict(), dict)
+    assert isinstance(chunk.model_dump(), dict)
 
 
 def test_article_model_validation():
