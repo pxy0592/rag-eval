@@ -130,10 +130,12 @@ class QAFormat(BaseModel):
     )
     answer: str = Field(
         ...,
-        description="The exact answer to the question, extracted or inferred from the text. "
-        "Should be concise (1-2 sentences) and factually grounded in the text.",
+        description="A concise, standalone declarative answer grounded in the text. "
+        "It should restate the necessary subject, time, scope, and relationship "
+        "instead of returning only a bare value, date, name, unit, or noun phrase. "
+        "Preserve exact factual values and use 1-2 sentences.",
         examples=[
             "The Eiffel Tower is named after the engineer Gustave Eiffel.",
-            "The chemical energy is stored in carbohydrate molecules, such as sugars and starches.",
+            "截至2020年末，锦州机务段共有4041名现员。",
         ],
     )

@@ -130,7 +130,12 @@ def test_generate_uses_qa_pair_already_in_selected_chunk(main_module, monkeypatc
             )
         ],
     )
-    generate = Mock()
+    generate = Mock(
+        return_value=SimpleNamespace(
+            question="should not replace original question",
+            answer="截至2014年，该单位共有4797人。",
+        )
+    )
     monkeypatch.setattr(main_module, "generate", generate)
 
     question, answer = main_module.generate_syntetic_qa_pair(
@@ -138,18 +143,25 @@ def test_generate_uses_qa_pair_already_in_selected_chunk(main_module, monkeypatc
     )
 
     assert question["value"] == "截至2014年，该单位共有多少人？"
-    assert answer["value"] == "4797人。"
-    generate.assert_not_called()
+    assert answer["value"] == "截至2014年，该单位共有4797人。"
+    generate.assert_called_once()
+    assert "Current answer: 4797人。" in generate.call_args.kwargs["prompt"]
 
 
 def test_generate_and_add_qa(main_module, article, monkeypatch):
-    generated = SimpleNamespace(question="Generated?", answer="Generated.")
-    monkeypatch.setattr(main_module, "generate", Mock(return_value=generated))
+    generated = SimpleNamespace(
+        question="What was generated?",
+        answer="The model generated a complete factual answer.",
+    )
+    generate = Mock(return_value=generated)
+    monkeypatch.setattr(main_module, "generate", generate)
 
     question, answer = main_module.generate_syntetic_qa_pair("factual", article, [0])
 
-    assert question["value"] == "Generated?"
-    assert answer["value"] == "Generated."
+    assert question["value"] == "What was generated?"
+    assert answer["value"] == "The model generated a complete factual answer."
+    generate.assert_called_once()
+    assert "Source title: Test article" in generate.call_args.kwargs["prompt"]
 
     qa_data = main_module.add_to_qa_dataset(
         "factual", "en", "Test article", [0], "Q", "A", []
@@ -157,6 +169,67 @@ def test_generate_and_add_qa(main_module, article, monkeypatch):
     assert len(qa_data) == 1
     assert isinstance(qa_data[0], QA)
     assert qa_data[0].question == "Q"
+
+
+def test_short_generated_answer_gets_one_contextual_rewrite(
+    main_module, monkeypatch
+):
+    article = Article(
+        title="锦州机务段",
+        source="http://smartq/api/v1/knowledge/id-1",
+        language="cn",
+        chunks=[
+            Chunk(
+                heading="分块 1",
+                level=1,
+                content="截至2020年末，全段现员4041人。",
+            )
+        ],
+    )
+    generate = Mock(
+        side_effect=[
+            SimpleNamespace(
+                question="截至2020年末，全段共有多少名现员？",
+                answer="4041人",
+            ),
+            SimpleNamespace(
+                question="ignored rewrite question",
+                answer="截至2020年末，锦州机务段共有4041名现员。",
+            ),
+        ]
+    )
+    monkeypatch.setattr(main_module, "generate", generate)
+
+    question, answer = main_module.generate_syntetic_qa_pair(
+        "factual", article, [0]
+    )
+
+    assert question["value"] == "截至2020年末，全段共有多少名现员？"
+    assert answer["value"] == "截至2020年末，锦州机务段共有4041名现员。"
+    assert generate.call_count == 2
+    assert "Do not return only a bare number" in generate.call_args_list[0].kwargs[
+        "prompt"
+    ]
+    assert "Current answer: 4041人" in generate.call_args_list[1].kwargs[
+        "prompt"
+    ]
+
+
+def test_answer_expansion_detects_fragments_but_not_complete_sentences(main_module):
+    assert main_module.answer_needs_expansion("4041人") is True
+    assert main_module.answer_needs_expansion("Paris.") is True
+    assert (
+        main_module.answer_needs_expansion(
+            "截至2020年末，锦州机务段共有4041名现员。"
+        )
+        is False
+    )
+    assert (
+        main_module.answer_needs_expansion(
+            "Paris is the capital of France."
+        )
+        is False
+    )
 
 
 def test_generate_qa_errors_are_wrapped(main_module, article, monkeypatch):

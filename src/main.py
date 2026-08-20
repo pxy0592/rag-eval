@@ -1,3 +1,4 @@
+import re
 from typing import Literal
 
 from .lib.proxy import remove_unsupported_socks_proxies
@@ -164,6 +165,40 @@ def qa_pair_from_chunks(chunks: list[Chunk]) -> QAFormat | None:
     return None
 
 
+_ANSWER_SENTENCE_MARKERS = re.compile(
+    r"(?:是|为|有|共有|包括|位于|达到|属于|发生|表示|指|由|在)"
+    r"|(?:\b(?:is|are|was|were|has|have|contains|includes|equals|"
+    r"es|son|fue|eran|tiene|incluye)\b)",
+    re.IGNORECASE,
+)
+
+
+def answer_needs_expansion(answer: str) -> bool:
+    """Identify short factual fragments that should become standalone sentences."""
+    compact = re.sub(r"[^\w\u4e00-\u9fff]+", "", answer, flags=re.UNICODE)
+    if not compact:
+        return True
+    if _ANSWER_SENTENCE_MARKERS.search(answer):
+        return False
+    return len(compact) <= 24
+
+
+def expand_factual_answer(
+    qa_pair: QAFormat, article: Article, context: str
+) -> QAFormat:
+    """Use one repair pass when the generated answer is only a short fragment."""
+    if not answer_needs_expansion(qa_pair.answer):
+        return qa_pair
+    prompt = PROMPT["factual_answer_rewrite"].format(
+        article_title=article.title,
+        question=qa_pair.question,
+        answer=qa_pair.answer,
+        context=context,
+    )
+    rewritten = generate(prompt=prompt, llm=llm)
+    return QAFormat(question=qa_pair.question, answer=rewritten.answer)
+
+
 def generate_syntetic_qa_pair(
     type_q: Literal["factual", "multihop"],
     article: Article,
@@ -173,14 +208,19 @@ def generate_syntetic_qa_pair(
     qa_pair = qa_pair_from_chunks(chunks)
 
     try:
+        context = format_context(chunks)
         if qa_pair is None:
-            context = format_context(chunks)
             match type_q:
                 case "factual":
-                    prompt = PROMPT["factual_qa_pair"].format(context=context)
+                    prompt = PROMPT["factual_qa_pair"].format(
+                        article_title=article.title,
+                        context=context,
+                    )
                 case _:
                     raise ValueError(f"Unsupported question type: {type_q}")
             qa_pair = generate(prompt=prompt, llm=llm)
+        if type_q == "factual":
+            qa_pair = expand_factual_answer(qa_pair, article, context)
         return (
             gr.update(
                 value=qa_pair.question,
