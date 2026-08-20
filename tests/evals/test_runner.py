@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from src.evals.models import EvaluationError
+from src.evals.models import AgentEvent, EvaluationError
 from src.evals.runner import (
     AgentResponse,
     collect_dataset,
@@ -170,5 +170,45 @@ def test_report_includes_metrics_coverage_and_unscorable_diagnostics(tmp_path):
     assert "- Selected metrics: precision@1, answer_exact_match" in report
     assert "- Report generated:" in report
     assert "Retrieval evidence unavailable" in report
+    assert "Expected chunk indices: [51]" in report
+    assert "Ground-truth chunk mappings: Not observed" in report
     assert "Status: failed" in report
     assert "secret" not in report
+
+
+def test_saved_tool_results_backfill_chunk_uuid_index_mapping(tmp_path):
+    run_dir = tmp_path / "run-1"
+    run_dir.mkdir()
+    tool_output = (
+        '<search_results count="2">'
+        '<chunk rank="1" chunk_id="wrong-doc-id" chunk_index="51" '
+        'knowledge_id="other" knowledge_title="other.docx" score="0.9"></chunk>'
+        '<chunk rank="2" chunk_id="target-id" chunk_index="51" '
+        'knowledge_id="knowledge-1" knowledge_title="knowledge.docx" score="0.8"></chunk>'
+        '</search_results>'
+    )
+    record = saved_record(0, retrieved=None)
+    record = record.model_copy(
+        update={
+            "answer": 'The answer cites <kb chunk_id="target-id" />',
+            "events": [
+                AgentEvent(
+                    response_type="tool_result",
+                    content=tool_output,
+                    data={"tool_name": "knowledge_search", "output": tool_output},
+                )
+            ],
+        }
+    )
+    (run_dir / "records.jsonl").write_text(
+        record.model_dump_json() + "\n", encoding="utf-8"
+    )
+
+    loaded = load_result_records(run_dir / "records.jsonl")
+    score = score_run(run_dir, "recall@1")
+
+    assert loaded[0].retrieved_chunk_indices == [51]
+    assert len(loaded[0].retrieved_chunks) == 1
+    assert loaded[0].retrieved_chunks[0].chunk_id == "target-id"
+    assert loaded[0].retrieved_chunks[0].cited_in_answer is True
+    assert score.metrics[0].value == 1.0

@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha256
 from datetime import datetime, timezone
 import json
 from pathlib import Path
 from time import monotonic
 from typing import Protocol
+
+from ..lib.smartq import SmartQChunkMapping, extract_chunk_mappings
 
 from .metrics import (
     RETRIEVAL_METRICS,
@@ -24,6 +26,7 @@ from .models import (
     EvaluationRun,
     EvaluationScore,
     MetricSummary,
+    RetrievedChunkMapping,
     ValidationRecord,
     run_directory,
 )
@@ -43,6 +46,7 @@ class AgentResponse:
     retrieved_chunk_indices: list[int] | None
     events: list[AgentEvent]
     duration_ms: int
+    retrieved_chunks: list[SmartQChunkMapping] = field(default_factory=list)
     error: str | None = None
 
 
@@ -86,6 +90,70 @@ def create_run_directory(output_dir: Path, run_id: str) -> Path:
     return directory
 
 
+def _normalise_article_title(title: str) -> str:
+    """Normalize .doc/.docx filename differences for validation mapping."""
+    name = Path(title.strip()).name.casefold()
+    for suffix in (".docx", ".doc"):
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
+
+
+def _convert_chunk_mappings(
+    mappings: Iterable[SmartQChunkMapping],
+    article_title: str,
+    answer: str | None,
+) -> list[RetrievedChunkMapping]:
+    """Keep mappings compatible with the validation record's source document."""
+    expected_title = _normalise_article_title(article_title)
+    raw_mappings = list(mappings)
+    titled_matches = [
+        mapping
+        for mapping in raw_mappings
+        if mapping.knowledge_title
+        and _normalise_article_title(mapping.knowledge_title) == expected_title
+    ]
+    compatible = titled_matches or [
+        mapping for mapping in raw_mappings if not mapping.knowledge_title
+    ]
+    result: list[RetrievedChunkMapping] = []
+    seen: set[str] = set()
+    for mapping in compatible:
+        if mapping.chunk_id in seen:
+            continue
+        seen.add(mapping.chunk_id)
+        result.append(
+            RetrievedChunkMapping(
+                **mapping.__dict__,
+                cited_in_answer=bool(answer and mapping.chunk_id in answer),
+            )
+        )
+    return result
+
+
+def _mappings_from_events(
+    events: Iterable[AgentEvent], article_title: str, answer: str | None
+) -> list[RetrievedChunkMapping]:
+    mappings: list[SmartQChunkMapping] = []
+    seen: set[str] = set()
+    for event in events:
+        if event.response_type not in {"references", "tool_result"}:
+            continue
+        for mapping in extract_chunk_mappings(event.content, event.data):
+            if mapping.chunk_id in seen:
+                continue
+            seen.add(mapping.chunk_id)
+            mappings.append(mapping)
+    return _convert_chunk_mappings(mappings, article_title, answer)
+
+
+def _mapping_indices(
+    mappings: Iterable[RetrievedChunkMapping],
+) -> list[int] | None:
+    indices = list(dict.fromkeys(mapping.chunk_index for mapping in mappings))
+    return indices or None
+
+
 def _result_from_record(
     record: ValidationRecord,
     run_id: str,
@@ -93,6 +161,7 @@ def _result_from_record(
     duration_ms: int,
     answer: str | None = None,
     retrieved_chunk_indices: list[int] | None = None,
+    retrieved_chunks: list[RetrievedChunkMapping] | None = None,
     events: list[AgentEvent] | None = None,
     error: str | None = None,
 ) -> AgentResultRecord:
@@ -109,6 +178,7 @@ def _result_from_record(
         duration_ms=max(duration_ms, 0),
         answer=answer,
         retrieved_chunk_indices=retrieved_chunk_indices,
+        retrieved_chunks=retrieved_chunks or [],
         events=events or [],
         error=error,
     )
@@ -130,6 +200,15 @@ def collect_records(
                 duration_ms = response.duration_ms or int(
                     (monotonic() - started_at) * 1000
                 )
+                retrieved_chunks = _convert_chunk_mappings(
+                    getattr(response, "retrieved_chunks", []),
+                    record.article_title,
+                    response.answer,
+                )
+                retrieved_chunk_indices = (
+                    _mapping_indices(retrieved_chunks)
+                    or response.retrieved_chunk_indices
+                )
                 if response.error:
                     result = _result_from_record(
                         record,
@@ -137,7 +216,8 @@ def collect_records(
                         "failed",
                         duration_ms,
                         answer=response.answer or None,
-                        retrieved_chunk_indices=response.retrieved_chunk_indices,
+                        retrieved_chunk_indices=retrieved_chunk_indices,
+                        retrieved_chunks=retrieved_chunks,
                         events=response.events,
                         error=response.error,
                     )
@@ -147,7 +227,8 @@ def collect_records(
                         run_id,
                         "invalid_response",
                         duration_ms,
-                        retrieved_chunk_indices=response.retrieved_chunk_indices,
+                        retrieved_chunk_indices=retrieved_chunk_indices,
+                        retrieved_chunks=retrieved_chunks,
                         events=response.events,
                         error="Agent QA response did not contain an answer",
                     )
@@ -158,7 +239,8 @@ def collect_records(
                         "success",
                         duration_ms,
                         answer=response.answer,
-                        retrieved_chunk_indices=response.retrieved_chunk_indices,
+                        retrieved_chunk_indices=retrieved_chunk_indices,
+                        retrieved_chunks=retrieved_chunks,
                         events=response.events,
                     )
             except Exception as error:  # per-record failures must not abort collection
@@ -235,7 +317,19 @@ def load_result_records(path: Path) -> list[AgentResultRecord]:
     records: list[AgentResultRecord] = []
     for line_number, line in enumerate(lines, start=1):
         try:
-            records.append(AgentResultRecord.model_validate_json(line))
+            record = AgentResultRecord.model_validate_json(line)
+            if not record.retrieved_chunks:
+                mappings = _mappings_from_events(
+                    record.events, record.article_title, record.answer
+                )
+                if mappings:
+                    record = record.model_copy(
+                        update={
+                            "retrieved_chunks": mappings,
+                            "retrieved_chunk_indices": _mapping_indices(mappings),
+                        }
+                    )
+            records.append(record)
         except ValueError as error:
             raise EvaluationError(
                 f"saved result artifact has invalid JSONL at line {line_number}: {error}"
@@ -397,6 +491,16 @@ def render_report(
         diagnostic = record.error or ""
         if record.status == "success" and record.retrieved_chunk_indices is None:
             diagnostic = "Retrieval evidence unavailable"
+        relevant_mappings = [
+            mapping
+            for mapping in record.retrieved_chunks
+            if mapping.chunk_index in set(record.expected_chunk_indices)
+        ]
+        mapping_summary = ", ".join(
+            f"{mapping.chunk_index} -> {mapping.chunk_id}"
+            + (" (cited)" if mapping.cited_in_answer else "")
+            for mapping in relevant_mappings
+        )
         lines.extend(
             [
                 f"### [{record.record_index}] {record.question}",
@@ -404,6 +508,8 @@ def render_report(
                 f"- Status: {record.status}",
                 f"- Retrieval eligible: {record.retrieved_chunk_indices is not None}",
                 f"- Generation eligible: {record.status == 'success' and bool(record.answer)}",
+                f"- Expected chunk indices: {record.expected_chunk_indices}",
+                f"- Ground-truth chunk mappings: {mapping_summary or 'Not observed'}",
                 f"- Diagnostic: {diagnostic or 'None'}",
                 "",
             ]

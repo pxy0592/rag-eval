@@ -53,6 +53,20 @@ class AgentEvent(BaseModel):
     data: dict[str, Any] = Field(default_factory=dict)
 
 
+class RetrievedChunkMapping(BaseModel):
+    """Validation-set chunk index mapped to SmartQ's persisted chunk UUID."""
+
+    chunk_id: str
+    chunk_index: int
+    knowledge_id: str = ""
+    knowledge_title: str = ""
+    knowledge_base_id: str = ""
+    rank: int | None = None
+    score: float | None = None
+    tool_name: str = ""
+    cited_in_answer: bool = False
+
+
 class EvaluationRun(BaseModel):
     """Configuration-safe metadata for one local collection run."""
 
@@ -80,6 +94,7 @@ class AgentResultRecord(BaseModel):
     expected_chunk_indices: list[int]
     answer: str | None = None
     retrieved_chunk_indices: list[int] | None = None
+    retrieved_chunks: list[RetrievedChunkMapping] = Field(default_factory=list)
     status: Literal["success", "failed", "invalid_response"]
     duration_ms: int = 0
     error: str | None = None

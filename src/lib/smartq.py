@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -254,11 +255,106 @@ class SmartQClient:
         return payload
 
 @dataclass(frozen=True)
+class SmartQChunkMapping:
+    """Mapping between SmartQ's chunk UUID and validation-compatible index."""
+
+    chunk_id: str
+    chunk_index: int
+    knowledge_id: str = ""
+    knowledge_title: str = ""
+    knowledge_base_id: str = ""
+    rank: int | None = None
+    score: float | None = None
+    tool_name: str = ""
+
+
+_CHUNK_TAG_PATTERN = re.compile(r"<chunk\s+([^>]+)>")
+_CHUNK_ATTRIBUTE_PATTERN = re.compile(r'(\w+)="([^"]*)"')
+
+
+def extract_chunk_mappings(
+    content: str, data: dict[str, Any] | None = None
+) -> list[SmartQChunkMapping]:
+    """Extract ordered chunk UUID/index mappings from one SmartQ SSE event."""
+    payload = data or {}
+    tool_name = str(payload.get("tool_name") or "")
+    mappings: list[SmartQChunkMapping] = []
+
+    def append_mapping(raw: dict[str, Any], fallback_rank: int) -> None:
+        chunk_id = str(raw.get("chunk_id") or raw.get("id") or "").strip()
+        chunk_index = _non_negative_int(raw.get("chunk_index"))
+        if not chunk_id or chunk_index is None:
+            return
+        score = _optional_float(raw.get("score"))
+        rank = _non_negative_int(raw.get("rank"))
+        mappings.append(
+            SmartQChunkMapping(
+                chunk_id=chunk_id,
+                chunk_index=chunk_index,
+                knowledge_id=str(raw.get("knowledge_id") or ""),
+                knowledge_title=str(raw.get("knowledge_title") or ""),
+                knowledge_base_id=str(raw.get("knowledge_base_id") or ""),
+                rank=rank if rank is not None else fallback_rank,
+                score=score,
+                tool_name=tool_name,
+            )
+        )
+
+    references = payload.get("references")
+    if isinstance(references, list):
+        for position, reference in enumerate(references, start=1):
+            if isinstance(reference, dict):
+                append_mapping(reference, position)
+
+    chunks = payload.get("chunks")
+    if isinstance(chunks, list):
+        for position, chunk in enumerate(chunks, start=1):
+            if isinstance(chunk, dict):
+                enriched = dict(chunk)
+                knowledge_base = chunk.get("knowledge_base")
+                if isinstance(knowledge_base, dict):
+                    enriched.setdefault("knowledge_base_id", knowledge_base.get("id"))
+                enriched.setdefault("knowledge_title", payload.get("knowledge_title"))
+                append_mapping(enriched, position)
+
+    xml_output = content or str(payload.get("output") or "")
+    for position, match in enumerate(_CHUNK_TAG_PATTERN.finditer(xml_output), start=1):
+        append_mapping(dict(_CHUNK_ATTRIBUTE_PATTERN.findall(match.group(1))), position)
+
+    unique: list[SmartQChunkMapping] = []
+    seen: set[str] = set()
+    for mapping in mappings:
+        if mapping.chunk_id in seen:
+            continue
+        seen.add(mapping.chunk_id)
+        unique.append(mapping)
+    return unique
+
+
+def _non_negative_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _optional_float(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+@dataclass(frozen=True)
 class SmartQAgentResponse:
     """Terminal response assembled from a SmartQ Agent QA SSE stream."""
 
     answer: str
     retrieved_chunk_indices: list[int] | None
+    retrieved_chunks: list[SmartQChunkMapping]
     events: list[dict[str, Any]]
     duration_ms: int
     error: str | None = None
@@ -307,8 +403,7 @@ class SmartQAgentClient:
         started_at = time.monotonic()
         events: list[dict[str, Any]] = []
         answer_parts: list[str] = []
-        retrieved_chunk_indices: list[int] = []
-        references_received = False
+        retrieved_chunks: list[SmartQChunkMapping] = []
         error_message: str | None = None
 
         try:
@@ -360,18 +455,13 @@ class SmartQAgentClient:
                     )
                     if response_type == "answer":
                         answer_parts.append(self._sanitize_error(content))
-                    elif response_type == "references":
-                        references_received = True
-                        references = safe_data.get("references")
-                        if isinstance(references, list):
-                            for reference in references:
-                                if not isinstance(reference, dict):
-                                    continue
-                                chunk_index = reference.get("chunk_index")
-                                if isinstance(chunk_index, int) and not isinstance(
-                                    chunk_index, bool
-                                ) and chunk_index >= 0 and chunk_index not in retrieved_chunk_indices:
-                                    retrieved_chunk_indices.append(chunk_index)
+                    elif response_type in {"references", "tool_result"}:
+                        for mapping in extract_chunk_mappings(content, safe_data):
+                            if all(
+                                existing.chunk_id != mapping.chunk_id
+                                for existing in retrieved_chunks
+                            ):
+                                retrieved_chunks.append(mapping)
                     elif response_type == "error":
                         error_message = content or str(safe_data.get("message") or "Agent QA error")
                     elif response_type == "complete":
@@ -382,8 +472,11 @@ class SmartQAgentClient:
         return SmartQAgentResponse(
             answer="".join(answer_parts),
             retrieved_chunk_indices=(
-                retrieved_chunk_indices if references_received else None
+                list(dict.fromkeys(mapping.chunk_index for mapping in retrieved_chunks))
+                if retrieved_chunks
+                else None
             ),
+            retrieved_chunks=retrieved_chunks,
             events=events,
             duration_ms=int((time.monotonic() - started_at) * 1000),
             error=self._sanitize_error(error_message) if error_message else None,

@@ -152,7 +152,7 @@ def test_agent_qa_creates_session_parses_sse_and_preserves_rank(monkeypatch):
     stream_response = StreamingResponse(
         [
             b'data: {"response_type":"answer","content":"404"}\n',
-            b'data: {"response_type":"references","data":{"references":[{"chunk_index":51},{"chunk_index":51},{"chunk_index":108}]}}\n',
+            b'data: {"response_type":"references","data":{"references":[{"chunk_id":"chunk-51","chunk_index":51,"knowledge_title":"knowledge.docx"},{"chunk_id":"chunk-51","chunk_index":51,"knowledge_title":"knowledge.docx"},{"chunk_id":"chunk-108","chunk_index":108,"knowledge_title":"knowledge.docx"}]}}\n',
             'data: {"response_type":"answer","content":"1人"}\n'.encode("utf-8"),
             b'data: {"response_type":"complete"}\n',
         ]
@@ -172,6 +172,10 @@ def test_agent_qa_creates_session_parses_sse_and_preserves_rank(monkeypatch):
 
     assert response.answer == "4041\u4eba"
     assert response.retrieved_chunk_indices == [51, 108]
+    assert [(chunk.chunk_id, chunk.chunk_index) for chunk in response.retrieved_chunks] == [
+        ("chunk-51", 51),
+        ("chunk-108", 108),
+    ]
     assert response.error is None
     assert urlopen.call_args_list[0].args[0].full_url == "http://smartq.example/api/v1/sessions"
     request = urlopen.call_args_list[1].args[0]
@@ -239,3 +243,50 @@ def test_agent_qa_redacts_api_key_from_persistable_sse_diagnostics(monkeypatch):
     assert "secret-key" not in response.answer
     assert "[REDACTED]" in serialized_events
     assert response.answer == "[REDACTED] answer"
+
+
+def test_agent_qa_maps_tool_result_chunk_uuid_to_validation_index(monkeypatch):
+    from src.lib.smartq import SmartQAgentClient
+
+    tool_output = (
+        '<search_results count="2">'
+        '<chunk rank="1" chunk_id="other-id" chunk_index="3" '
+        'knowledge_id="other-knowledge" knowledge_title="other.docx" score="0.9">'
+        '</chunk>'
+        '<chunk rank="2" chunk_id="target-id" chunk_index="51" '
+        'knowledge_id="knowledge-1" knowledge_title="knowledge.docx" score="0.8">'
+        '</chunk>'
+        '</search_results>'
+    )
+    stream_lines = [
+        (
+            'data: ' + json.dumps(
+                {
+                    "response_type": "tool_result",
+                    "content": tool_output,
+                    "data": {"tool_name": "knowledge_search", "output": tool_output},
+                }
+            ) + "\n"
+        ).encode("utf-8"),
+        b'data: {"response_type":"answer","content":"answer"}\n',
+        b'data: {"response_type":"complete"}\n',
+    ]
+    monkeypatch.setattr(
+        "src.lib.smartq.urlopen",
+        Mock(
+            side_effect=[
+                FakeResponse({"success": True, "data": {"id": "session-1"}}),
+                StreamingResponse(stream_lines),
+            ]
+        ),
+    )
+
+    response = SmartQAgentClient(
+        "http://smartq.example", "secret-key", "tenant-1", "agent-1"
+    ).ask("question")
+
+    assert response.retrieved_chunk_indices == [3, 51]
+    assert response.retrieved_chunks[1].chunk_id == "target-id"
+    assert response.retrieved_chunks[1].chunk_index == 51
+    assert response.retrieved_chunks[1].tool_name == "knowledge_search"
+    assert response.retrieved_chunks[1].rank == 2
